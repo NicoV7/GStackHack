@@ -8,7 +8,9 @@ export async function POST(req: Request) {
     question: Question;
     currentTopic: string;
     existingNodes: string[];
+    sessionId?: string;
   };
+  const _sessionId = body.sessionId || "anonymous";
 
   const { readable, emit, close } = createSSEStream();
 

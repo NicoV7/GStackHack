@@ -13,7 +13,7 @@ const responseCache = new Map<
 >();
 
 export async function POST(req: Request) {
-  const { topic } = (await req.json()) as { topic: string };
+  const { topic, sessionId = "anonymous" } = (await req.json()) as { topic: string; sessionId?: string };
   const normalizedTopic = topic.trim().toLowerCase();
   const topicId = normalizedTopic.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -38,13 +38,13 @@ export async function POST(req: Request) {
       }
 
       // ① Read learner profile
-      const profile = await getProfile();
+      const profile = await getProfile(sessionId);
 
       // ② Browser Agent
       const sources = await browserAgent(topic, emit);
 
       // ③ Persist research (fire-and-forget)
-      putResearch(topic, sources).catch(() => {});
+      putResearch(sessionId, topic, sources).catch(() => {});
 
       // ④ Decomposition Agent
       const { plans } = await decompositionAgent(topic, sources, profile, emit);
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
       // ⑦ Persist lessons (fire-and-forget)
       for (const lesson of lessons) {
         const subId = lesson.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        putLesson(topic, subId, lesson).catch(() => {});
+        putLesson(sessionId, topic, subId, lesson).catch(() => {});
       }
 
       // Cache first lesson for quick replay

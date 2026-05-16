@@ -31,32 +31,38 @@ async function call(name: string, args: Record<string, unknown>) {
 
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+const safeSessionId = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "anonymous";
+
 type Content = Array<{ text?: string }>;
 const extractText = (res: Awaited<ReturnType<typeof call>>) =>
   (res.content as Content)?.[0]?.text || null;
 
-export async function getProfile(): Promise<LearnerProfile> {
+export async function getProfile(sessionId: string): Promise<LearnerProfile> {
   try {
-    const text = extractText(await call("get_page", { path: "learner/profile" }));
+    const sid = safeSessionId(sessionId);
+    const text = extractText(await call("get_page", { path: `users/${sid}/profile` }));
     return text ? (JSON.parse(text) as LearnerProfile) : DEFAULT_PROFILE;
   } catch { clientP = null; return DEFAULT_PROFILE; }
 }
 
-export async function putResearch(topic: string, sources: Source[]): Promise<void> {
+export async function putResearch(sessionId: string, topic: string, sources: Source[]): Promise<void> {
   try {
-    await call("put_page", { path: `research/${slug(topic)}`, type: "research", body: JSON.stringify(sources) });
+    const sid = safeSessionId(sessionId);
+    await call("put_page", { path: `users/${sid}/research/${slug(topic)}`, type: "research", body: JSON.stringify(sources) });
   } catch { clientP = null; }
 }
 
-export async function putLesson(topic: string, subId: string, lesson: Lesson): Promise<void> {
+export async function putLesson(sessionId: string, topic: string, subId: string, lesson: Lesson): Promise<void> {
   try {
-    await call("put_page", { path: `lessons/${slug(topic)}/${subId}`, type: "lesson", body: lesson.content });
+    const sid = safeSessionId(sessionId);
+    await call("put_page", { path: `users/${sid}/lessons/${slug(topic)}/${subId}`, type: "lesson", body: lesson.content });
   } catch { clientP = null; }
 }
 
-export async function queryContext(topic: string): Promise<string[]> {
+export async function queryContext(sessionId: string, topic: string): Promise<string[]> {
   try {
-    const text = extractText(await call("query", { query: topic }));
+    const sid = safeSessionId(sessionId);
+    const text = extractText(await call("query", { query: topic, prefix: `users/${sid}/` }));
     if (!text) return [];
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [];
