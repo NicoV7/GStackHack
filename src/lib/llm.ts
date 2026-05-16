@@ -3,6 +3,8 @@
  * Priority: GEMINI_API_KEY > OLLAMA_URL > throw (agents catch and use demo-cache).
  */
 
+import { z } from "zod";
+
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const OLLAMA_BASE = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -75,4 +77,23 @@ async function ollamaChat(system: string, userMessage: string): Promise<string> 
 
   const data = await res.json();
   return data.message?.content ?? "";
+}
+
+/**
+ * Shared LLM call pattern: call → strip thinking/fences → parse JSON → validate with Zod.
+ * Throws on validation failure (callers catch and use their own fallback).
+ */
+export async function callAgentLLM<T>(
+  schema: z.ZodSchema<T>,
+  systemPrompt: string,
+  userMessage: string
+): Promise<T> {
+  const text = await llmChat(systemPrompt, userMessage);
+  const jsonStr = text
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/^```(?:json)?\n?/m, "")
+    .replace(/\n?```$/m, "")
+    .trim();
+  const parsed = schema.parse(JSON.parse(jsonStr));
+  return parsed;
 }

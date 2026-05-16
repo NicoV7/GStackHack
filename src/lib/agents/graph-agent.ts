@@ -1,4 +1,4 @@
-import { llmChat } from "../llm";
+import { callAgentLLM } from "../llm";
 import type { SSEEvent, Lesson, GraphNode, GraphEdge } from "../types";
 import { GraphOutputSchema } from "./schemas";
 import { GRAPH_SYSTEM_PROMPT } from "./prompts";
@@ -18,28 +18,18 @@ export async function graphAgent(
   emit: EmitFn
 ): Promise<GraphAgentResult> {
   try {
-    const text = await llmChat(
+    const result = await callAgentLLM(
+      GraphOutputSchema,
       GRAPH_SYSTEM_PROMPT,
       `Current topic: ${topic}\nLesson title: ${lesson.title}\nExisting nodes: [${existingNodeIds.join(", ")}]\n\nSuggest related topics for the knowledge graph.`
     );
 
-    const jsonStr = text
-      .replace(/<think>[\s\S]*?<\/think>/g, "")
-      .replace(/^```(?:json)?\n?/m, "")
-      .replace(/\n?```$/m, "")
-      .trim();
-    const parsed = GraphOutputSchema.safeParse(JSON.parse(jsonStr));
-
-    if (!parsed.success) {
-      return fallbackToCache(topic, emit);
-    }
-
-    const nodes: GraphNode[] = parsed.data.newNodes.map((n, i) => ({
+    const nodes: GraphNode[] = result.newNodes.map((n, i) => ({
       ...n,
-      position: radialPosition(i, parsed.data.newNodes.length),
+      position: radialPosition(i, result.newNodes.length),
     }));
 
-    const edges: GraphEdge[] = parsed.data.newEdges;
+    const edges: GraphEdge[] = result.newEdges;
 
     for (const node of nodes) {
       emit({ type: "graph.node_added", node });

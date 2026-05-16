@@ -73,4 +73,5 @@ export type LessonOutput = z.infer<typeof LessonSchema>;
 export type GraphOutput = z.infer<typeof GraphOutputSchema>;
 export type RewireOutput = z.infer<typeof RewireOutputSchema>;
 export type VisualizationOutput = z.infer<typeof VisualizationOutputSchema>;
+export type LessonPlan = z.infer<typeof LessonPlanSchema>;
 export type DecompositionOutput = z.infer<typeof DecompositionOutputSchema>;

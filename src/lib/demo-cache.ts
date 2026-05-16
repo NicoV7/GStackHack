@@ -1,4 +1,6 @@
 import type { Source, Lesson, GraphNode, GraphEdge } from "./types";
+import type { VisualizationResult } from "./agents/visualization-agent";
+import type { LessonPlan } from "./agents/schemas";
 
 export const CACHED_SOURCES: Record<string, Source[]> = {
   derivatives: [
@@ -99,4 +101,21 @@ export const CACHED_GRAPH_EDGES: Record<string, GraphEdge[]> = {
     { id: "e-deriv-chain", source: "derivatives", target: "chain-rule", type: "branch" },
     { id: "e-deriv-product", source: "derivatives", target: "product-rule", type: "branch" },
   ],
+};
+
+export const CACHED_DECOMPOSITION: Record<string, LessonPlan[]> = {
+  derivatives: [
+    { subTopic: "Limits & Continuity", focus: "Understanding the foundation of derivatives through limits", visualStyle: "graph", prerequisiteOf: "Power Rule" },
+    { subTopic: "Power Rule", focus: "The most common derivative rule with examples", visualStyle: "example", prerequisiteOf: "Chain Rule" },
+    { subTopic: "Chain Rule", focus: "Differentiating composed functions", visualStyle: "diagram", prerequisiteOf: null },
+  ],
+};
+
+export const CACHED_VISUALIZATIONS: Record<string, VisualizationResult> = {
+  derivatives: {
+    type: "graph",
+    spec: "SVG showing f(x)=x² and its derivative f'(x)=2x as tangent lines at multiple points",
+    description: "Interactive graph showing how the slope of tangent lines changes along a parabola",
+    interactiveHint: "Drag the point along the curve to see how the tangent slope changes",
+  },
 };

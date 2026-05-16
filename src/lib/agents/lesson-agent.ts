@@ -1,4 +1,4 @@
-import { llmChat } from "../llm";
+import { callAgentLLM } from "../llm";
 import type { SSEEvent, Source, Lesson } from "../types";
 import { LessonSchema } from "./schemas";
 import { LESSON_SYSTEM_PROMPT } from "./prompts";
@@ -18,24 +18,13 @@ export async function lessonAgent(
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.excerpt}\nURL: ${s.url}`)
       .join("\n\n");
 
-    const text = await llmChat(
+    const result = await callAgentLLM(
+      LessonSchema,
       LESSON_SYSTEM_PROMPT,
       `Create a lesson about: ${topic}\n\nWeb research sources:\n${sourcesText}`
     );
 
-    // Strip markdown fences and thinking tags if present
-    const jsonStr = text
-      .replace(/<think>[\s\S]*?<\/think>/g, "")
-      .replace(/^```(?:json)?\n?/m, "")
-      .replace(/\n?```$/m, "")
-      .trim();
-    const parsed = LessonSchema.safeParse(JSON.parse(jsonStr));
-
-    if (!parsed.success) {
-      return fallbackToCache(topic, sources, emit);
-    }
-
-    const lesson: Lesson = { ...parsed.data, sources };
+    const lesson: Lesson = { ...result, sources };
 
     if (lesson.visualization) {
       emit({ type: "lesson.visualization", description: lesson.visualization });

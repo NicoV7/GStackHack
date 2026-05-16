@@ -1,4 +1,4 @@
-import { llmChat } from "../llm";
+import { callAgentLLM } from "../llm";
 import type { SSEEvent, Question } from "../types";
 import { RewireOutputSchema } from "./schemas";
 import { REWIRE_SYSTEM_PROMPT } from "./prompts";
@@ -16,7 +16,8 @@ export async function rewireAgent(input: RewireInput, emit: EmitFn) {
   const correctOption = input.question.options.find((o) => o.correct);
 
   try {
-    const text = await llmChat(
+    const result = await callAgentLLM(
+      RewireOutputSchema,
       REWIRE_SYSTEM_PROMPT,
       `Topic: ${input.currentTopic}
 Question: ${input.question.text}
@@ -26,18 +27,7 @@ Hint: ${input.question.prerequisiteTopic ?? "none"}
 Existing nodes: [${input.existingNodes.join(", ")}]`
     );
 
-    const jsonStr = text
-      .replace(/<think>[\s\S]*?<\/think>/g, "")
-      .replace(/^```(?:json)?\n?/m, "")
-      .replace(/\n?```$/m, "")
-      .trim();
-    const parsed = RewireOutputSchema.safeParse(JSON.parse(jsonStr));
-
-    if (!parsed.success) {
-      return fallbackRewire(input, emit);
-    }
-
-    const prereqId = parsed.data.prerequisiteTopic
+    const prereqId = result.prerequisiteTopic
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-");
 
@@ -45,11 +35,11 @@ Existing nodes: [${input.existingNodes.join(", ")}]`
       type: "graph.prerequisite_suggested",
       node: {
         id: prereqId,
-        topic: parsed.data.prerequisiteTopic,
+        topic: result.prerequisiteTopic,
         status: "prerequisite-suggested",
         position: { x: 0, y: -180 },
       },
-      reason: parsed.data.reason,
+      reason: result.reason,
     });
 
     const topicId = input.currentTopic.toLowerCase().replace(/[^a-z0-9]+/g, "-");

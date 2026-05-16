@@ -2,9 +2,11 @@ import { createSSEStream, sseResponse } from "@/lib/sse";
 import { browserAgent } from "@/lib/agents/browser-agent";
 import { lessonAgent } from "@/lib/agents/lesson-agent";
 import { graphAgent } from "@/lib/agents/graph-agent";
+import { decompositionAgent } from "@/lib/agents/decomposition-agent";
+import { visualizationAgent } from "@/lib/agents/visualization-agent";
+import { getProfile, putResearch, putLesson } from "@/lib/gbrain";
 import type { Lesson, GraphNode, GraphEdge } from "@/lib/types";
 
-// In-memory response cache — avoids re-calling APIs for the same topic
 const responseCache = new Map<
   string,
   { lesson: Lesson; nodes: GraphNode[]; edges: GraphEdge[] }
@@ -21,50 +23,66 @@ export async function POST(req: Request) {
     const start = Date.now();
 
     try {
-      // Check cache first
+      // Cache replay
       const cached = responseCache.get(normalizedTopic);
       if (cached) {
         emit({ type: "browser.searching", query: `${topic} (cached)` });
-        for (const source of cached.lesson.sources) {
-          emit({ type: "browser.source_found", source });
-        }
+        for (const source of cached.lesson.sources) emit({ type: "browser.source_found", source });
         emit({ type: "lesson.writing", topic });
-        if (cached.lesson.visualization) {
-          emit({ type: "lesson.visualization", description: cached.lesson.visualization });
-        }
+        if (cached.lesson.visualization) emit({ type: "lesson.visualization", description: cached.lesson.visualization });
         emit({ type: "lesson.quiz_generated", lesson: cached.lesson });
-        for (const node of cached.nodes) {
-          emit({ type: "graph.node_added", node });
-        }
-        for (const edge of cached.edges) {
-          emit({ type: "graph.edge_added", edge });
-        }
+        for (const node of cached.nodes) emit({ type: "graph.node_added", node });
+        for (const edge of cached.edges) emit({ type: "graph.edge_added", edge });
         emit({ type: "pipeline.complete", totalMs: Date.now() - start });
         return;
       }
 
-      // --- Stage 1: Browser Agent (Tavily search) ---
+      // ① Read learner profile
+      const profile = await getProfile();
+
+      // ② Browser Agent
       const sources = await browserAgent(topic, emit);
 
-      // --- Stage 2: Lesson Agent (Claude) ---
-      const lesson = await lessonAgent(topic, sources, emit);
+      // ③ Persist research (fire-and-forget)
+      putResearch(topic, sources).catch(() => {});
 
-      // --- Stage 3: Graph Agent (Claude) ---
-      const existingNodeIds = [topicId];
-      const { newNodes, newEdges } = await graphAgent(
-        topic,
-        lesson,
-        existingNodeIds,
-        emit
+      // ④ Decomposition Agent
+      const { plans } = await decompositionAgent(topic, sources, profile, emit);
+      const effectivePlans = plans.length > 0 ? plans : [{ subTopic: topic, focus: topic, visualStyle: "diagram" as const, prerequisiteOf: null }];
+
+      // ⑤ Fan-out Lesson Agents
+      const lessonResults = await Promise.allSettled(
+        effectivePlans.map((plan) => lessonAgent(plan.subTopic, sources, emit))
       );
+      const lessons = lessonResults
+        .filter((r): r is PromiseFulfilledResult<Lesson> => r.status === "fulfilled")
+        .map((r) => r.value);
 
-      // Cache the result
-      responseCache.set(normalizedTopic, {
-        lesson,
-        nodes: newNodes,
-        edges: newEdges,
-      });
+      if (lessons.length === 0) throw new Error("All lesson agents failed");
 
+      // ⑥ Parallel: Visualization Agent + Graph Agent
+      const existingNodeIds = [topicId];
+      const parallelResults = await Promise.allSettled([
+        ...lessons.map((l) => visualizationAgent(l, emit)),
+        graphAgent(topic, lessons[0], existingNodeIds, emit),
+      ]);
+
+      // Extract graph result (last item)
+      const graphResult = parallelResults[parallelResults.length - 1];
+      const { newNodes, newEdges } = graphResult.status === "fulfilled"
+        ? graphResult.value as { newNodes: GraphNode[]; newEdges: GraphEdge[] }
+        : { newNodes: [] as GraphNode[], newEdges: [] as GraphEdge[] };
+
+      // ⑦ Persist lessons (fire-and-forget)
+      for (const lesson of lessons) {
+        const subId = lesson.title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        putLesson(topic, subId, lesson).catch(() => {});
+      }
+
+      // Cache first lesson for quick replay
+      responseCache.set(normalizedTopic, { lesson: lessons[0], nodes: newNodes, edges: newEdges });
+
+      // ⑧ Pipeline complete
       emit({ type: "pipeline.complete", totalMs: Date.now() - start });
     } catch (err) {
       emit({ type: "pipeline.error", error: String(err) });
