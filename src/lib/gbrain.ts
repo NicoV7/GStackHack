@@ -6,8 +6,6 @@ import type { LearnerProfile, Source, Lesson } from "./types";
 
 const exec = promisify(execFile);
 
-const GBRAIN_URL = process.env.GBRAIN_URL?.trim();
-const GBRAIN_SHARED_SECRET = process.env.GBRAIN_SHARED_SECRET?.trim();
 const SESSION_TTL_MS = Number(process.env.GBRAIN_SESSION_TTL_MS || 72 * 60 * 60 * 1000);
 
 const DEFAULT_PROFILE: LearnerProfile = {
@@ -16,6 +14,8 @@ const DEFAULT_PROFILE: LearnerProfile = {
   weakAreas: [],
   completedTopics: [],
 };
+
+let lastGbrainError: string | null = null;
 
 type StoredProfile = LearnerProfile & {
   sessionId?: string;
@@ -29,6 +29,18 @@ let clientP: Promise<Client> | null = null;
 
 export function safeSessionId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "anonymous";
+}
+
+function gbrainUrl(): string | undefined {
+  return process.env.GBRAIN_URL?.trim() || undefined;
+}
+
+function gbrainSharedSecret(): string | undefined {
+  return process.env.GBRAIN_SHARED_SECRET?.trim() || undefined;
+}
+
+function allowLocalCliFallback(): boolean {
+  return !gbrainUrl() && process.env.NODE_ENV !== "production";
 }
 
 function slug(value: string): string {
@@ -62,14 +74,31 @@ function stripFrontmatter(text: string): string {
   return text.replace(/^---[\s\S]*?---\n*/m, "");
 }
 
+function recordGbrainError(scope: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  lastGbrainError = `${scope}: ${message}`.slice(0, 240);
+  console.warn(`[gbrain] ${lastGbrainError}`);
+}
+
+export function getGbrainDiagnostic(): { configured: boolean; mode: "mcp" | "cli"; lastError: string | null } {
+  const url = gbrainUrl();
+  return {
+    configured: Boolean(url),
+    mode: url ? "mcp" : "cli",
+    lastError: lastGbrainError,
+  };
+}
+
 async function getClient(): Promise<Client> {
-  if (!GBRAIN_URL) throw new Error("GBRAIN_URL is not configured");
+  const url = gbrainUrl();
+  if (!url) throw new Error("GBRAIN_URL is not configured");
   if (!clientP) {
     clientP = (async () => {
-      const headers = GBRAIN_SHARED_SECRET
-        ? { Authorization: `Bearer ${GBRAIN_SHARED_SECRET}` }
+      const secret = gbrainSharedSecret();
+      const headers = secret
+        ? { Authorization: `Bearer ${secret}` }
         : undefined;
-      const transport = new StreamableHTTPClientTransport(new URL("/mcp", GBRAIN_URL), {
+      const transport = new StreamableHTTPClientTransport(new URL("/mcp", url), {
         requestInit: headers ? { headers } : undefined,
       });
       const client = new Client({ name: "learngraph", version: "0.1.0" });
@@ -92,18 +121,26 @@ function extractMcpText(result: Awaited<ReturnType<typeof callMcp>>): string | n
 }
 
 async function getPage(path: string): Promise<string | null> {
-  if (GBRAIN_URL) {
+  if (gbrainUrl()) {
     try {
       return extractMcpText(await callMcp("get_page", { path }));
-    } catch {
+    } catch (error) {
+      recordGbrainError("mcp get_page", error);
       clientP = null;
+      return null;
     }
+  }
+
+  if (!allowLocalCliFallback()) {
+    recordGbrainError("mcp get_page", "GBRAIN_URL is required in production");
+    return null;
   }
 
   try {
     const { stdout } = await exec("gbrain", ["get", cliSlug(path)]);
     return stdout || null;
-  } catch {
+  } catch (error) {
+    recordGbrainError("cli get", error);
     return null;
   }
 }
@@ -112,28 +149,41 @@ async function putPage(sessionId: string, path: string, body: string, type: stri
   const title = path.split("/").at(-1) || path;
   const content = ttlMetadata(sessionId, type, title) + body;
 
-  if (GBRAIN_URL) {
+  if (gbrainUrl()) {
     try {
       await callMcp("put_page", { path, type, body: content });
       return true;
-    } catch {
+    } catch (error) {
+      recordGbrainError("mcp put_page", error);
       clientP = null;
+      return false;
     }
+  }
+
+  if (!allowLocalCliFallback()) {
+    recordGbrainError("mcp put_page", "GBRAIN_URL is required in production");
+    return false;
   }
 
   return new Promise((resolve) => {
     const child = spawn("gbrain", ["put", cliSlug(path)]);
     child.stdin.write(content);
     child.stdin.end();
-    child.on("close", (code) => resolve(code === 0));
-    child.on("error", () => resolve(false));
+    child.on("close", (code) => {
+      if (code !== 0) recordGbrainError("cli put", `gbrain exited ${code}`);
+      resolve(code === 0);
+    });
+    child.on("error", (error) => {
+      recordGbrainError("cli put", error);
+      resolve(false);
+    });
   });
 }
 
 async function queryPages(sessionId: string, topic: string): Promise<string[] | null> {
   const query = `${topic} ${userRoot(sessionId)}`;
 
-  if (GBRAIN_URL) {
+  if (gbrainUrl()) {
     try {
       const text = extractMcpText(await callMcp("query", { query, pathPrefix: userRoot(sessionId) }));
       if (!text) return [];
@@ -143,15 +193,23 @@ async function queryPages(sessionId: string, topic: string): Promise<string[] | 
       } catch {
         return text.split("\n").filter(Boolean).slice(0, 5);
       }
-    } catch {
+    } catch (error) {
+      recordGbrainError("mcp query", error);
       clientP = null;
+      return null;
     }
+  }
+
+  if (!allowLocalCliFallback()) {
+    recordGbrainError("mcp query", "GBRAIN_URL is required in production");
+    return null;
   }
 
   try {
     const { stdout } = await exec("gbrain", ["query", query]);
     return stdout ? stdout.split("\n").filter(Boolean).slice(0, 5) : [];
-  } catch {
+  } catch (error) {
+    recordGbrainError("cli query", error);
     return null;
   }
 }

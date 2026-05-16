@@ -4,7 +4,7 @@ import { lessonAgent } from "@/lib/agents/lesson-agent";
 import { graphAgent } from "@/lib/agents/graph-agent";
 import { decompositionAgent } from "@/lib/agents/decomposition-agent";
 import { visualizationAgent } from "@/lib/agents/visualization-agent";
-import { getProfile, putResearch, putLesson, queryContext, touchSession, safeSessionId } from "@/lib/gbrain";
+import { getGbrainDiagnostic, getProfile, putResearch, putLesson, queryContext, touchSession, safeSessionId } from "@/lib/gbrain";
 import { buildLessonPathway, buildRelatedNodeEdges, slugTopic, type ExistingLessonNode } from "@/lib/lesson-pathway";
 import type { Lesson, GraphNode, GraphEdge } from "@/lib/types";
 
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     try {
       const memoryOnline = await touchSession(sid, topic);
       if (!memoryOnline) {
-        emit({ type: "gbrain.offline", reason: "session_touch_failed" });
+        emit({ type: "gbrain.offline", reason: "session_touch_failed", diagnostic: getGbrainDiagnostic() });
       }
 
       const [profile, context] = await Promise.all([
@@ -200,7 +200,7 @@ export async function POST(req: Request) {
       }
       emit(allWritten
         ? { type: "gbrain.memory_written", topic }
-        : { type: "gbrain.offline", reason: "memory_write_failed" });
+        : { type: "gbrain.offline", reason: "memory_write_failed", diagnostic: getGbrainDiagnostic() });
 
       // Cache first lesson for quick replay
       responseCache.set(cacheKey, { lesson: lessons[0], nodes: newNodes, edges: newEdges });
