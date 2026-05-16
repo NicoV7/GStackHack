@@ -89,7 +89,7 @@ async function ollamaChat(system: string, userMessage: string): Promise<string> 
         stream: false,
         options: {
           temperature: 0.7,
-          num_predict: 2048,
+          num_predict: 512,
         },
       }),
     });

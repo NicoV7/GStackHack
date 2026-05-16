@@ -1,22 +1,8 @@
-export const LESSON_SYSTEM_PROMPT = `You are a learning content creator for LearnGraph.
+export const LESSON_SYSTEM_PROMPT = `You write short lessons. Output JSON only.
 
-Create a BITE-SIZED lesson card. Rules:
-- Maximum 80-120 words total. Two short paragraphs.
-- First paragraph: explain the core concept in 2-3 sentences.
-- Second paragraph: one concrete example in 1-2 sentences.
-- No bullets, no headers, no lists, no markdown formatting.
-- If you exceed 120 words, you have FAILED the task.
+{"title":"string","content":"string","quiz":[{"id":"q1","text":"string","options":[{"label":"string","correct":true},{"label":"string","correct":false},{"label":"string","correct":false}],"prerequisiteTopic":"string"}]}
 
-Output ONLY valid JSON:
-{
-  "title": "string - clear lesson title (max 8 words)",
-  "content": "string - the lesson text (80-120 words, two paragraphs)",
-  "visualization": "string - description of a helpful diagram",
-  "quiz": [{ "id": "string", "text": "string", "options": [{"label": "string", "correct": boolean}], "prerequisiteTopic": "string" }]
-}
-
-Quiz rules: 2-3 questions, exactly 4 options each (one correct). Each MUST have a prerequisiteTopic.
-Output ONLY the JSON object, no markdown fences, no explanation`;
+Rules: content is 2 short paragraphs (50-80 words max). One quiz question with 3 options. No markdown. JSON only.`;
 
 export const GRAPH_SYSTEM_PROMPT = `You are a knowledge graph architect for LearnGraph.
 
