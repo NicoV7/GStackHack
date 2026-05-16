@@ -7,89 +7,59 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell" aria-label="GBrain visual lesson app">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">GBrain Learn</p>
-          <h1>Memory-first lessons</h1>
-        </div>
-        <button class="icon-button" id="memoryButton" aria-label="Open memory pulse">
-          <span aria-hidden="true">M</span>
-        </button>
-      </header>
-
-      <section class="search-panel" aria-label="AI lesson search">
-        <label for="subjectInput">Create a path</label>
-        <form class="subject-form" id="subjectForm">
+    <div class="app">
+      <!-- Search Area -->
+      <header class="search-area">
+        <div class="logo">LearnGraph</div>
+        <form class="search-form" id="subjectForm">
           <input
             id="subjectInput"
             name="subject"
             type="search"
             autocomplete="off"
-            placeholder="Try chain rule, vectors, probability..."
+            placeholder="What do you want to learn? Try derivatives, vectors..."
+            class="search-bar"
           />
-          <button type="submit">Build</button>
+          <button type="submit" class="search-btn">Search</button>
         </form>
-      </section>
+      </header>
 
-      <nav class="segmented-tabs" aria-label="Views">
-        <button class="tab active" data-view="learn">Learn</button>
-        <button class="tab" data-view="map">Graph</button>
-        <button class="tab" data-view="gallery">Gallery</button>
-        <button class="tab" data-view="chat">Chat</button>
-      </nav>
-
-      <section class="view active" id="learnView" aria-label="Current lesson">
-        <div class="pulse" id="progressPulse">You are building a calculus path.</div>
-        <article class="lesson-card" id="lessonCard"></article>
-      </section>
-
-      <section class="view" id="mapView" aria-label="Lesson graph">
-        <div class="section-heading">
-          <h2>Branching lesson graph</h2>
-          <p id="mapSummary">AI creates paths from what you know to what is next.</p>
+      <!-- Main Content: graph + right panel -->
+      <div class="main">
+        <!-- Graph Area -->
+        <div class="graph-area" id="graphArea">
+          <svg class="graph-edges" id="graphEdges"></svg>
+          <div class="graph-nodes" id="graphNodes"></div>
+          <div class="graph-empty" id="graphEmpty">
+            <p>Type a topic above to start building your knowledge graph</p>
+          </div>
         </div>
-        <div class="graph-wrap">
-          <svg id="lessonGraph" viewBox="0 0 360 390" role="img" aria-label="Generated lesson graph"></svg>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+          <!-- Agent Feed -->
+          <div class="agent-feed-section">
+            <h3 class="panel-heading">Agent Activity</h3>
+            <div class="agent-feed" id="agentFeed"></div>
+          </div>
+
+          <!-- Lesson Panel -->
+          <div class="lesson-panel" id="lessonPanel">
+            <div class="lesson-empty">
+              <p>Click a node in the graph to view its lesson</p>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <section class="view" id="galleryView" aria-label="Lesson gallery">
-        <div class="section-heading">
-          <h2>Lesson gallery</h2>
-          <p>Every generated card is saved as a reusable micro-unit.</p>
-        </div>
-        <div class="gallery-grid" id="galleryGrid"></div>
-      </section>
+      <!-- Status Bar -->
+      <div class="status-bar" id="statusBar">
+        <span id="graphStats">Graph: 0 nodes · 0 edges</span>
+        <span id="pipelineStatus">Ready</span>
+      </div>
+    </div>
 
-      <section class="view" id="chatView" aria-label="AI agent activity">
-        <div class="agent-feed-header">
-          <h3>Agent Activity</h3>
-        </div>
-        <div class="agent-feed" id="agentFeed"></div>
-        <div class="chat-log" id="chatLog"></div>
-        <form class="chat-form" id="chatForm">
-          <input
-            id="chatInput"
-            type="text"
-            autocomplete="off"
-            placeholder="Ask for a lesson, review, or new branch..."
-          />
-          <button type="submit">Send</button>
-        </form>
-      </section>
-
-      <aside class="memory-drawer" id="memoryDrawer" aria-hidden="true">
-        <div class="drawer-handle"></div>
-        <h2>Memory pulse</h2>
-        <p id="memoryCopy">
-          GBrain saw you finish function composition. Next it is testing whether
-          the chain rule visual actually landed.
-        </p>
-        <button id="closeMemory">Close</button>
-      </aside>
-    </main>
-
+    <script src="graph.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

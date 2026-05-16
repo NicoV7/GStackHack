@@ -1,379 +1,40 @@
-const conceptSeeds = {
-  "chain rule": [
-    "Function composition",
-    "Local slope",
-    "Outer change",
-    "Inner change",
-    "Chain rule",
-    "Product rule",
-  ],
-  vectors: [
-    "Magnitude",
-    "Direction",
-    "Components",
-    "Dot product",
-    "Projection",
-    "Basis change",
-  ],
-  probability: [
-    "Sample space",
-    "Events",
-    "Conditional probability",
-    "Bayes update",
-    "Expected value",
-    "Variance",
-  ],
-};
+/* LearnGraph — Main Application Logic */
 
-const graphPositions = [
-  { x: 72, y: 58 },
-  { x: 236, y: 58 },
-  { x: 72, y: 170 },
-  { x: 236, y: 170 },
-  { x: 154, y: 282 },
-  { x: 285, y: 330 },
-];
-
-const links = [
-  [0, 2],
-  [1, 3],
-  [2, 4],
-  [3, 4],
-  [4, 5],
-];
-
-let lessons = [];
-let activeLessonId = "";
-let completed = new Set();
-let currentSubject = "chain rule";
-
-const lessonCard = document.querySelector("#lessonCard");
-const galleryGrid = document.querySelector("#galleryGrid");
-const lessonGraph = document.querySelector("#lessonGraph");
-const progressPulse = document.querySelector("#progressPulse");
+// --- DOM References ---
 const subjectForm = document.querySelector("#subjectForm");
 const subjectInput = document.querySelector("#subjectInput");
-const chatForm = document.querySelector("#chatForm");
-const chatInput = document.querySelector("#chatInput");
-const chatLog = document.querySelector("#chatLog");
-const memoryButton = document.querySelector("#memoryButton");
-const memoryDrawer = document.querySelector("#memoryDrawer");
-const closeMemory = document.querySelector("#closeMemory");
-const memoryCopy = document.querySelector("#memoryCopy");
-
-function normalizeSubject(value) {
-  return value.trim().toLowerCase() || "chain rule";
-}
-
-function titleCase(value) {
-  return value
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function conceptsForSubject(subject) {
-  if (conceptSeeds[subject]) return conceptSeeds[subject];
-
-  const root = titleCase(subject);
-  return [
-    `${root} intuition`,
-    `${root} parts`,
-    `${root} pattern`,
-    `${root} trap`,
-    `${root} application`,
-    `${root} review`,
-  ];
-}
-
-function createLessonPath(subject) {
-  currentSubject = subject;
-  completed = new Set();
-  lessons = conceptsForSubject(subject).map((concept, index) => {
-    const id = concept.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const position = graphPositions[index];
-    const visualTypes = ["curve", "split", "stack", "pulse", "bridge", "review"];
-
-    return {
-      id,
-      concept,
-      index,
-      x: position.x,
-      y: position.y,
-      visual: visualTypes[index % visualTypes.length],
-      status: index === 0 ? "Ready" : "Queued",
-      explanation: buildExplanation(subject, concept, index),
-      problem: buildProblem(concept, index),
-      answer: 1,
-    };
-  });
-  activeLessonId = lessons[0].id;
-  renderAll();
-  addMessage(
-    "ai",
-    `I built a ${lessons.length}-card path for ${titleCase(subject)}. I will branch if your answer shows a missing prerequisite.`,
-  );
-}
-
-function buildExplanation(subject, concept, index) {
-  const subjectName = titleCase(subject);
-  const lines = [
-    `${concept} is the first visual anchor for ${subjectName}. Watch how the highlighted part moves before you look at symbols.`,
-    `This card keeps one idea on screen: what changes, what stays fixed, and what that means for the next step.`,
-    `GBrain will use your answer to decide whether to advance or regenerate this concept with a different visual.`,
-  ];
-  return index < 2 ? `${lines[0]} ${lines[1]}` : `${lines[1]} ${lines[2]}`;
-}
-
-function buildProblem(concept, index) {
-  const stems = [
-    `Which part should you identify first in ${concept}?`,
-    `What does this visual make easier to notice?`,
-    `If this step feels confusing, what should the AI branch back to?`,
-  ];
-
-  return {
-    prompt: stems[index % stems.length],
-    choices: [
-      "The final answer before the structure",
-      "The moving relationship between the parts",
-      "A longer definition with more notation",
-    ],
-  };
-}
-
-function renderAll() {
-  renderLesson();
-  renderGraph();
-  renderGallery();
-  renderPulse();
-}
-
-function activeLesson() {
-  return lessons.find((lesson) => lesson.id === activeLessonId) || lessons[0];
-}
-
-function renderPulse() {
-  const lesson = activeLesson();
-  const completeCount = completed.size;
-  const next = lessons.find((item) => !completed.has(item.id) && item.id !== lesson.id);
-  progressPulse.textContent = next
-    ? `You got ${completeCount} card${completeCount === 1 ? "" : "s"}. Current: ${lesson.concept}. Next branch: ${next.concept}.`
-    : `Path complete. GBrain would schedule review cards for ${titleCase(currentSubject)}.`;
-}
-
-function renderLesson() {
-  const lesson = activeLesson();
-  lessonCard.innerHTML = `
-    <div class="lesson-visual">
-      ${visualMarkup(lesson)}
-    </div>
-    <div class="lesson-body">
-      <div class="lesson-kicker">
-        <span>${titleCase(currentSubject)} / Card ${lesson.index + 1}</span>
-        <span class="status-pill">${completed.has(lesson.id) ? "Learned" : lesson.status}</span>
-      </div>
-      <h2 class="lesson-title">${lesson.concept}</h2>
-      <p class="lesson-copy">${lesson.explanation}</p>
-      <div class="practice">
-        <h3>${lesson.problem.prompt}</h3>
-        <div class="choice-list">
-          ${lesson.problem.choices
-            .map(
-              (choice, index) =>
-                `<button class="choice" data-answer="${index}" type="button">${choice}</button>`,
-            )
-            .join("")}
-        </div>
-        <p class="feedback" id="feedback"></p>
-      </div>
-    </div>
-  `;
-
-  lessonCard.querySelectorAll(".choice").forEach((button) => {
-    button.addEventListener("click", () => handleAnswer(Number(button.dataset.answer)));
-  });
-}
-
-function visualMarkup(lesson) {
-  const accent = lesson.index % 2 === 0 ? "#7ee7c1" : "#9eb6ff";
-  const warm = lesson.index % 2 === 0 ? "#ffca6d" : "#ff8d6d";
-
-  return `
-    <svg viewBox="0 0 330 205" aria-hidden="true">
-      <rect x="0" y="0" width="330" height="205" rx="10" fill="#151815"></rect>
-      <path d="M28 162 C78 72, 118 184, 164 102 S244 38, 302 122" fill="none" stroke="#3b4340" stroke-width="8" stroke-linecap="round"></path>
-      <path class="trace-line" d="M28 162 C78 72, 118 184, 164 102 S244 38, 302 122" fill="none" stroke="${accent}" stroke-width="4" stroke-linecap="round"></path>
-      <line x1="32" y1="166" x2="306" y2="166" stroke="#59615d" stroke-width="1"></line>
-      <line x1="42" y1="26" x2="42" y2="172" stroke="#59615d" stroke-width="1"></line>
-      <circle class="node-dot" cx="${72 + lesson.index * 34}" cy="${152 - (lesson.index % 3) * 34}" r="11" fill="${warm}"></circle>
-      <circle class="node-dot" cx="${118 + lesson.index * 24}" cy="${86 + (lesson.index % 2) * 34}" r="7" fill="${accent}" style="animation-delay: 80ms"></circle>
-      <text x="24" y="24" fill="#f8f6ee" font-size="12" font-weight="800">${lesson.concept}</text>
-      <text x="24" y="190" fill="#9aa29e" font-size="10">one visual, one idea, one check</text>
-    </svg>
-  `;
-}
-
-function handleAnswer(answerIndex) {
-  const lesson = activeLesson();
-  const feedback = document.querySelector("#feedback");
-  const buttons = lessonCard.querySelectorAll(".choice");
-
-  buttons.forEach((button) => {
-    button.disabled = true;
-    const isCorrect = Number(button.dataset.answer) === lesson.answer;
-    button.classList.toggle("correct", isCorrect);
-    button.classList.toggle("incorrect", Number(button.dataset.answer) === answerIndex && !isCorrect);
-  });
-
-  if (answerIndex === lesson.answer) {
-    completed.add(lesson.id);
-    feedback.textContent = `GBrain marked ${lesson.concept} as landed. Advancing the graph.`;
-    addMessage("ai", `Nice. ${lesson.concept} landed, so I moved the path forward.`);
-    const nextLesson = lessons.find((item) => !completed.has(item.id));
-    setTimeout(() => {
-      if (nextLesson) activeLessonId = nextLesson.id;
-      renderAll();
-    }, 720);
-  } else {
-    feedback.textContent = "GBrain detected a misconception. It will branch to a simpler visual.";
-    addMessage(
-      "ai",
-      `That answer says ${lesson.concept} needs another visual. I created a branch instead of pushing ahead.`,
-    );
-    branchFromLesson(lesson);
-    setTimeout(renderAll, 720);
-  }
-}
-
-function branchFromLesson(lesson) {
-  const branchId = `${lesson.id}-visual-branch`;
-  if (lessons.some((item) => item.id === branchId)) {
-    activeLessonId = branchId;
-    return;
-  }
-
-  const branch = {
-    ...lesson,
-    id: branchId,
-    concept: `${lesson.concept} visual branch`,
-    index: lessons.length,
-    x: Math.max(58, lesson.x - 24),
-    y: Math.min(360, lesson.y + 92),
-    status: "Generated",
-    explanation:
-      "This branch removes notation and keeps the relationship visible. The AI generated it because your answer showed the first card moved too fast.",
-    problem: {
-      prompt: "What changed in this branch?",
-      choices: ["More symbols", "A slower visual path", "A harder final problem"],
-    },
-  };
-
-  lessons.push(branch);
-  activeLessonId = branch.id;
-}
-
-function renderGraph() {
-  const nodes = lessons
-    .map((lesson) => {
-      const classes = [
-        "graph-node",
-        lesson.id === activeLessonId ? "active" : "",
-        completed.has(lesson.id) ? "done" : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const label = lesson.concept.length > 17 ? `${lesson.concept.slice(0, 15)}...` : lesson.concept;
-
-      return `
-        <g class="${classes}" data-id="${lesson.id}" transform="translate(${lesson.x} ${lesson.y})">
-          <circle r="34"></circle>
-          <text y="-2">${label.split(" ")[0] || "Lesson"}</text>
-          <text y="12">${label.split(" ").slice(1, 3).join(" ")}</text>
-        </g>
-      `;
-    })
-    .join("");
-
-  const staticLinks = links
-    .filter(([from, to]) => lessons[from] && lessons[to])
-    .map(([from, to]) => lineMarkup(lessons[from], lessons[to]))
-    .join("");
-
-  const branchLinks = lessons
-    .filter((lesson) => lesson.id.endsWith("-visual-branch"))
-    .map((lesson) => {
-      const parent = lessons.find((item) => lesson.id.startsWith(item.id) && item.id !== lesson.id);
-      return parent ? lineMarkup(parent, lesson) : "";
-    })
-    .join("");
-
-  lessonGraph.innerHTML = `${staticLinks}${branchLinks}${nodes}`;
-  lessonGraph.querySelectorAll(".graph-node").forEach((node) => {
-    node.addEventListener("click", () => {
-      activeLessonId = node.dataset.id;
-      showView("learn");
-      renderAll();
-    });
-  });
-}
-
-function lineMarkup(from, to) {
-  return `<line class="graph-link" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"></line>`;
-}
-
-function renderGallery() {
-  galleryGrid.innerHTML = lessons
-    .map((lesson) => {
-      const state = completed.has(lesson.id)
-        ? "Learned"
-        : lesson.id === activeLessonId
-          ? "Now"
-          : lesson.status;
-      return `
-        <button class="gallery-item" type="button" data-id="${lesson.id}">
-          <span class="gallery-thumb">${lesson.concept.charAt(0)}</span>
-          <span>
-            <h3>${lesson.concept}</h3>
-            <p>${lesson.explanation.split(".").slice(0, 1).join(".")}.</p>
-          </span>
-          <span class="gallery-state">${state}</span>
-        </button>
-      `;
-    })
-    .join("");
-
-  galleryGrid.querySelectorAll(".gallery-item").forEach((item) => {
-    item.addEventListener("click", () => {
-      activeLessonId = item.dataset.id;
-      showView("learn");
-      renderAll();
-    });
-  });
-}
-
-function showView(viewName) {
-  document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.view === viewName);
-  });
-  document.querySelectorAll(".view").forEach((view) => {
-    view.classList.toggle("active", view.id === `${viewName}View`);
-  });
-}
-
-function addMessage(role, text) {
-  const message = document.createElement("div");
-  message.className = `message ${role === "user" ? "user" : "ai"}`;
-  message.textContent = text;
-  chatLog.appendChild(message);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-
-// --- SSE Pipeline Consumer ---
 const agentFeed = document.querySelector("#agentFeed");
-let pipelineRunning = false;
+const lessonPanel = document.querySelector("#lessonPanel");
+const graphEmpty = document.querySelector("#graphEmpty");
+const graphStats = document.querySelector("#graphStats");
+const pipelineStatus = document.querySelector("#pipelineStatus");
 
+// --- State ---
+let pipelineRunning = false;
+let currentTopic = "";
+let currentLesson = null;
+
+// --- Fallback concept seeds (used when API is unreachable) ---
+const fallbackSeeds = {
+  "chain rule": ["Function composition", "Local slope", "Outer change", "Inner change", "Chain rule", "Product rule"],
+  vectors: ["Magnitude", "Direction", "Components", "Dot product", "Projection", "Basis change"],
+  probability: ["Sample space", "Events", "Conditional probability", "Bayes update", "Expected value", "Variance"],
+};
+
+// --- Initialize GraphState ---
+GraphState.init(
+  document.querySelector("#graphArea"),
+  document.querySelector("#graphEdges"),
+  document.querySelector("#graphNodes"),
+  (node) => {
+    // On node click — show lesson if available
+    if (node.lesson) {
+      renderLessonPanel(node.lesson, node.topic);
+    }
+  }
+);
+
+// --- Agent Feed ---
 function addAgentEvent(icon, text, status) {
   if (!agentFeed) return;
   const el = document.createElement("div");
@@ -391,6 +52,137 @@ function clearAgentFeed() {
   if (agentFeed) agentFeed.innerHTML = "";
 }
 
+// --- Lesson Panel ---
+function renderLessonPanel(lesson, topic) {
+  if (!lessonPanel) return;
+  currentLesson = lesson;
+
+  const sourcesHtml = lesson.sources && lesson.sources.length > 0
+    ? `<div class="lesson-sources">
+        <h4>Sources</h4>
+        ${lesson.sources.map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>`).join("")}
+      </div>`
+    : "";
+
+  const quizHtml = lesson.quiz && lesson.quiz.length > 0
+    ? `<div class="quiz-section">
+        <p class="quiz-question">${lesson.quiz[0].text}</p>
+        <div class="quiz-options">
+          ${lesson.quiz[0].options.map((opt, i) =>
+            `<button class="quiz-option" data-index="${i}" data-correct="${opt.correct}" data-qid="${lesson.quiz[0].id}">${opt.label}</button>`
+          ).join("")}
+        </div>
+        <p class="quiz-feedback" id="quizFeedback"></p>
+      </div>`
+    : "";
+
+  lessonPanel.innerHTML = `
+    <h2 class="lesson-title">${lesson.title || topic}</h2>
+    <div class="lesson-content">${lesson.content || ""}</div>
+    ${sourcesHtml}
+    ${quizHtml}
+  `;
+
+  // Wire quiz buttons
+  lessonPanel.querySelectorAll(".quiz-option").forEach((btn) => {
+    btn.addEventListener("click", () => handleQuizAnswer(btn, lesson));
+  });
+}
+
+function handleQuizAnswer(btn, lesson) {
+  const isCorrect = btn.dataset.correct === "true";
+  const feedback = document.querySelector("#quizFeedback");
+  const allButtons = lessonPanel.querySelectorAll(".quiz-option");
+
+  // Disable all buttons
+  allButtons.forEach((b) => {
+    b.disabled = true;
+    if (b.dataset.correct === "true") b.classList.add("correct");
+    if (b === btn && !isCorrect) b.classList.add("wrong");
+  });
+
+  if (isCorrect) {
+    if (feedback) feedback.textContent = "Correct! Node marked as learned.";
+    if (GraphState.activeNodeId) {
+      GraphState.markCompleted(GraphState.activeNodeId);
+    }
+    addAgentEvent("graph", `${currentTopic} marked as learned`, "done");
+    updateStats();
+  } else {
+    if (feedback) feedback.textContent = "Incorrect — checking for missing prerequisites...";
+    addAgentEvent("graph", "Quiz result: misconception detected", "working");
+
+    // Trigger rewire agent
+    const question = lesson.quiz[0];
+    triggerRewire(question, btn.textContent);
+  }
+}
+
+async function triggerRewire(question, wrongAnswer) {
+  try {
+    const res = await fetch("/api/rewire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        wrongAnswer,
+        question,
+        currentTopic,
+        existingNodes: Array.from(GraphState.nodes.keys()),
+      }),
+    });
+
+    if (!res.ok) {
+      // Fallback: use prerequisiteTopic hint from the question
+      handleDeterministicRewire(question);
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            handleSSEEvent(event);
+          } catch { /* skip */ }
+        }
+      }
+    }
+  } catch {
+    handleDeterministicRewire(question);
+  }
+}
+
+function handleDeterministicRewire(question) {
+  const prereqTopic = question.prerequisiteTopic || "Foundations";
+  const prereqId = prereqTopic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+  GraphState.addNode({
+    id: prereqId,
+    topic: prereqTopic,
+    status: "prerequisite-suggested",
+    position: { x: 0, y: 0 },
+  });
+  GraphState.addEdge({
+    id: `e-${prereqId}-${GraphState.activeNodeId}`,
+    source: prereqId,
+    target: GraphState.activeNodeId || currentTopic,
+    type: "prerequisite",
+  });
+
+  addAgentEvent("graph", `Prerequisite suggested: ${prereqTopic}`, "done");
+  updateStats();
+}
+
+// --- SSE Event Handler ---
 function handleSSEEvent(event) {
   switch (event.type) {
     case "browser.searching":
@@ -400,42 +192,64 @@ function handleSSEEvent(event) {
       addAgentEvent("search", `Found: ${event.source.title}`, "done");
       break;
     case "lesson.writing":
-      addAgentEvent("lesson", `Writing lesson: ${event.topic}`, "working");
+      addAgentEvent("lesson", `Writing lesson: ${event.topic || currentTopic}`, "working");
       break;
     case "lesson.visualization":
       addAgentEvent("lesson", "Generating visualization", "done");
       break;
     case "lesson.quiz_generated":
-      addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} quiz questions`, "done");
-      // Store the AI-generated lesson for later use
+      addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} questions`, "done");
       if (event.lesson) {
-        window._aiLesson = event.lesson;
+        currentLesson = event.lesson;
+        // Store lesson on the active graph node
+        if (GraphState.activeNodeId) {
+          GraphState.setLesson(GraphState.activeNodeId, event.lesson);
+        }
+        renderLessonPanel(event.lesson, currentTopic);
       }
       break;
     case "graph.node_added":
-      addAgentEvent("graph", `Added node: ${event.node.topic}`, "done");
+      if (graphEmpty) graphEmpty.classList.add("hidden");
+      GraphState.addNode(event.node);
+      updateStats();
       break;
     case "graph.edge_added":
-      addAgentEvent("graph", `Connected: ${event.edge.source} \u2192 ${event.edge.target}`, "done");
+      GraphState.addEdge(event.edge);
+      updateStats();
       break;
     case "graph.prerequisite_suggested":
-      addAgentEvent("graph", `Prerequisite suggested: ${event.node.topic}`, "working");
+      GraphState.addNode({ ...event.node, status: "prerequisite-suggested" });
+      addAgentEvent("graph", `Prerequisite: ${event.node.topic} — ${event.reason || ""}`, "done");
+      updateStats();
       break;
     case "pipeline.complete":
-      addAgentEvent("info", "Pipeline complete", "done");
+      addAgentEvent("info", `Pipeline complete (${event.totalMs}ms)`, "done");
       pipelineRunning = false;
+      if (pipelineStatus) pipelineStatus.textContent = `Done in ${(event.totalMs / 1000).toFixed(1)}s`;
       break;
     case "pipeline.error":
       addAgentEvent("info", `Error: ${event.error}`, "error");
       pipelineRunning = false;
+      if (pipelineStatus) pipelineStatus.textContent = "Error";
       break;
   }
 }
 
+// --- Pipeline ---
 async function startPipeline(topic) {
   if (pipelineRunning) return;
   pipelineRunning = true;
+  currentTopic = topic;
   clearAgentFeed();
+  GraphState.reset();
+  if (graphEmpty) graphEmpty.classList.add("hidden");
+  if (pipelineStatus) pipelineStatus.textContent = "Running...";
+
+  // Add root node
+  const topicId = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  GraphState.addRootNode(topicId, topic, null);
+  updateStats();
+
   addAgentEvent("info", `Starting pipeline for "${topic}"`, "working");
 
   try {
@@ -460,72 +274,54 @@ async function startPipeline(topic) {
           try {
             const event = JSON.parse(line.slice(6));
             handleSSEEvent(event);
-          } catch (e) {
-            // Skip malformed events
-          }
+          } catch { /* skip malformed */ }
         }
       }
     }
-  } catch (err) {
-    addAgentEvent("info", "Connection failed \u2014 using local data", "error");
+  } catch {
+    addAgentEvent("info", "Connection failed — using fallback data", "error");
+    useFallbackData(topic);
   }
   pipelineRunning = false;
 }
 
+function useFallbackData(topic) {
+  const normalized = topic.toLowerCase();
+  const concepts = fallbackSeeds[normalized] || [
+    `${topic} intuition`, `${topic} parts`, `${topic} pattern`,
+    `${topic} trap`, `${topic} application`, `${topic} review`
+  ];
+
+  concepts.forEach((concept, i) => {
+    const id = concept.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    GraphState.addNode({
+      id,
+      topic: concept,
+      status: "locked",
+      position: { x: 0, y: 0 },
+    });
+    const rootId = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    GraphState.addEdge({
+      id: `e-${rootId}-${id}`,
+      source: rootId,
+      target: id,
+      type: "branch",
+    });
+  });
+  updateStats();
+  if (pipelineStatus) pipelineStatus.textContent = "Fallback mode";
+}
+
+function updateStats() {
+  if (graphStats) {
+    graphStats.textContent = `Graph: ${GraphState.getNodeCount()} nodes · ${GraphState.getEdgeCount()} edges`;
+  }
+}
+
+// --- Form Submit ---
 subjectForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  const subject = normalizeSubject(subjectInput.value);
-  subjectInput.value = titleCase(subject);
-  createLessonPath(subject);
-  // Also start the AI pipeline in parallel
-  startPipeline(subject);
-  // Switch to chat/agent view to show pipeline activity
-  showView("chat");
+  const topic = subjectInput.value.trim();
+  if (!topic) return;
+  startPipeline(topic);
 });
-
-chatForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const text = chatInput.value.trim();
-  if (!text) return;
-
-  addMessage("user", text);
-  chatInput.value = "";
-
-  const subjectMatch = text.match(/(?:lesson|path|teach|learn|search)\s+(?:on|about|for)?\s*(.*)/i);
-  if (subjectMatch && subjectMatch[1]) {
-    const subject = normalizeSubject(subjectMatch[1]);
-    subjectInput.value = titleCase(subject);
-    createLessonPath(subject);
-    showView("learn");
-    return;
-  }
-
-  addMessage(
-    "ai",
-    "Ask me to make a path on a subject, or answer the current card so I can branch the lesson graph from your memory.",
-  );
-});
-
-document.querySelectorAll(".tab").forEach((tab) => {
-  tab.addEventListener("click", () => showView(tab.dataset.view));
-});
-
-memoryButton.addEventListener("click", () => {
-  const lesson = activeLesson();
-  memoryCopy.textContent = completed.has(lesson.id)
-    ? `${lesson.concept} is marked learned. GBrain will schedule a review after the next branch.`
-    : `${lesson.concept} is active. GBrain is waiting for one practice signal before choosing the next card.`;
-  memoryDrawer.classList.add("open");
-  memoryDrawer.setAttribute("aria-hidden", "false");
-});
-
-closeMemory.addEventListener("click", () => {
-  memoryDrawer.classList.remove("open");
-  memoryDrawer.setAttribute("aria-hidden", "true");
-});
-
-addMessage(
-  "ai",
-  "Tell me a subject and I will create lesson cards, branches, a graph, and a gallery.",
-);
-createLessonPath("chain rule");
