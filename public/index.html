@@ -4,87 +4,202 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LearnGraph — AI Learning Search Engine</title>
+    <meta name="description" content="Search any subject and LearnGraph builds a personalized knowledge graph — researching, writing, and quizzing as you go." />
+    <meta property="og:title" content="LearnGraph — AI Learning Search Engine" />
+    <meta property="og:description" content="You do not browse a curriculum. You grow one." />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23d97706'/%3E%3Ccircle cx='10' cy='12' r='3.5' fill='white'/%3E%3Ccircle cx='22' cy='20' r='3.5' fill='%2322d37e'/%3E%3Ccircle cx='22' cy='11' r='3.5' fill='white' opacity='0.6'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app">
-      <header class="search-area">
-        <div class="brand-lockup">
-          <div class="brand-mark" aria-hidden="true"><span></span></div>
-          <div>
-            <div class="logo">LearnGraph</div>
-            <p>AI learning search engine</p>
+    <div class="app" data-app-state="hero">
+
+      <!-- ── Hero Overlay ─────────────────────────────────────── -->
+      <div class="hero-overlay" id="heroOverlay" aria-hidden="false">
+
+        <div class="hero-left">
+          <div class="hero-brand">
+            <div class="brand-mark hero-brand-mark" aria-hidden="true"><span></span></div>
+            <span class="hero-brand-name">LearnGraph</span>
+          </div>
+
+          <div class="hero-copy">
+            <p class="hero-eyebrow">AI learning search engine</p>
+            <h1 class="hero-headline">You do not browse a curriculum. You grow one.</h1>
+            <p class="hero-sub">Search any subject. Watch AI research, write, map, quiz, and rewire a knowledge graph in real time.</p>
+          </div>
+
+          <form class="hero-search-form" id="heroSearchForm" role="search">
+            <div class="hero-search-wrap">
+              <input
+                id="heroInput"
+                name="subject"
+                type="search"
+                autocomplete="off"
+                placeholder="What do you want to learn?"
+                class="hero-search-bar"
+                aria-label="Search subject to learn"
+              />
+              <button type="submit" class="search-btn hero-search-btn">
+                Start learning
+                <span class="btn-icon-wrap" aria-hidden="true">→</span>
+              </button>
+            </div>
+          </form>
+
+          <nav class="hero-quick-searches" aria-label="Demo searches">
+            <span class="quick-label">Try:</span>
+            <button type="button" data-topic="derivatives">Derivatives</button>
+            <button type="button" data-topic="neural networks">Neural networks</button>
+            <button type="button" data-topic="probability">Probability</button>
+            <button type="button" data-topic="vectors">Vectors</button>
+          </nav>
+        </div>
+
+        <div class="hero-right" aria-hidden="true">
+          <div class="hero-right-bg"></div>
+          <span class="hero-right-label">Live knowledge map</span>
+          <svg class="hero-graph-svg" id="heroGraphSvg"></svg>
+          <div class="hero-nodes-preview" id="heroNodesPreview">
+            <div class="hero-node-dot root" id="hn0">Derivatives</div>
+            <div class="hero-node-dot" id="hn1">Limits</div>
+            <div class="hero-node-dot" id="hn2">Slope</div>
+            <div class="hero-node-dot" id="hn3">Functions</div>
+            <div class="hero-node-dot done" id="hn4">Chain rule</div>
+            <div class="hero-node-dot" id="hn5">Product rule</div>
           </div>
         </div>
-        <form class="search-form" id="subjectForm">
-          <input
-            id="subjectInput"
-            name="subject"
-            type="search"
-            autocomplete="off"
-            placeholder="What do you want to learn? Try derivatives, vectors..."
-            class="search-bar"
-          />
-          <button type="submit" class="search-btn">Search</button>
-        </form>
-        <div class="quick-searches" aria-label="Demo searches">
-          <button type="button" data-topic="derivatives">Derivatives</button>
-          <button type="button" data-topic="vectors">Vectors</button>
-          <button type="button" data-topic="probability">Probability</button>
+
+      </div>
+
+      <!-- ── Floating Nav Bar ───────────────────────────────────── -->
+      <header class="search-area" aria-label="Search" aria-hidden="true">
+        <div class="floating-nav">
+          <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true"><span></span></div>
+            <div class="logo">LearnGraph</div>
+          </div>
+
+          <div class="nav-divider" aria-hidden="true"></div>
+
+          <form class="search-form" id="subjectForm" role="search">
+            <input
+              id="subjectInput"
+              name="subject"
+              type="search"
+              autocomplete="off"
+              placeholder="Search a topic..."
+              class="search-bar"
+              aria-label="Search subject to learn"
+            />
+            <button type="submit" class="search-btn">Search</button>
+          </form>
+
+          <div class="nav-divider" aria-hidden="true"></div>
+
+          <nav class="quick-searches" aria-label="Demo searches">
+            <button type="button" data-topic="derivatives">Derivatives</button>
+            <button type="button" data-topic="vectors">Vectors</button>
+            <button type="button" data-topic="probability">Probability</button>
+          </nav>
         </div>
       </header>
 
-      <div class="main">
-        <div class="graph-area" id="graphArea">
-          <div class="graph-hero">
-            <p>Live knowledge map</p>
-            <h1>You do not browse a curriculum. You grow one.</h1>
-          </div>
-          <svg class="graph-edges" id="graphEdges"></svg>
-          <div class="graph-nodes" id="graphNodes"></div>
-          <div class="graph-empty" id="graphEmpty">
-            <p>Type a topic above to start building your knowledge graph</p>
-          </div>
-        </div>
+      <!-- ── Main: full-screen graph ────────────────────────────── -->
+      <div class="main" aria-hidden="true">
+        <section class="graph-area" id="graphArea" aria-label="Knowledge graph">
 
-        <div class="right-panel">
-          <div class="agent-feed-section">
-            <h3 class="panel-heading">Agent Activity <span id="sourceStats">0 sources</span></h3>
-            <div class="agent-feed" id="agentFeed"></div>
+          <!-- Graph canvas -->
+          <svg class="graph-edges" id="graphEdges" aria-hidden="true"></svg>
+          <div class="graph-nodes" id="graphNodes" role="list" aria-label="Graph nodes"></div>
+          <div class="graph-empty" id="graphEmpty" aria-live="polite">
+            <div class="graph-empty-inner">
+              <div class="graph-empty-icon" aria-hidden="true">◎</div>
+              <p>Your knowledge graph will appear here</p>
+              <p class="graph-empty-sub">Search a topic above to begin</p>
+            </div>
           </div>
 
-          <div class="lesson-panel" id="lessonPanel">
+          <!-- Gallery tab (slides down from top-right) -->
+          <div class="graph-gallery-tab" id="graphGalleryTab">
+            <button class="graph-gallery-toggle" id="graphGalleryToggle" aria-expanded="false">
+              <span>Lessons</span>
+              <span class="graph-gallery-count" id="galleryCount">0</span>
+              <span class="graph-gallery-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="graph-gallery-body">
+              <div class="gallery-grid" id="galleryGrid" role="list"></div>
+            </div>
+          </div>
+
+          <!-- Coach input bar (floats at bottom of graph) -->
+          <div class="graph-coach-bar" aria-label="AI coach">
+            <div class="graph-coach-log" id="chatLog" role="log" aria-live="polite"></div>
+            <form class="graph-coach-form" id="chatForm">
+              <span class="coach-status-dot" aria-hidden="true"></span>
+              <input
+                id="chatInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Ask the AI coach for a path, review, or branch..."
+                aria-label="Chat with AI coach"
+              />
+              <button type="submit">Ask</button>
+            </form>
+          </div>
+
+        </section>
+      </div>
+
+      <!-- ── Lesson Drawer (slide from right) ───────────────────── -->
+      <div
+        class="lesson-drawer"
+        id="lessonDrawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Lesson panel"
+        aria-hidden="true"
+      >
+        <div class="lesson-drawer-backdrop" id="lessonBackdrop"></div>
+        <div class="lesson-drawer-panel">
+          <div class="lesson-drawer-header">
+            <span class="lesson-drawer-title">Lesson</span>
+            <button class="lesson-drawer-close" id="lessonDrawerClose" aria-label="Close lesson panel">✕</button>
+          </div>
+          <div class="lesson-panel" id="lessonPanel" aria-label="Current lesson">
             <div class="lesson-empty">
               <p>Click a node in the graph to view its lesson</p>
             </div>
           </div>
-
-          <div class="gallery-panel">
-            <h3 class="panel-heading">Lesson Gallery</h3>
-            <div class="gallery-grid" id="galleryGrid"></div>
-          </div>
         </div>
       </div>
 
-      <div class="status-bar" id="statusBar">
-        <span id="graphStats">Graph: 0 nodes · 0 edges</span>
-        <span id="pipelineStatus">Ready</span>
+      <!-- ── Bento Drawer: agent feed only ──────────────────────── -->
+      <div
+        class="bento-drawer"
+        id="bentoDrawer"
+        role="region"
+        aria-label="Agent activity"
+      >
+        <div class="bento-handle" id="bentoHandle" role="button" tabindex="0" aria-expanded="false" aria-label="Toggle agent activity panel">
+          <div class="bento-handle-bar"></div>
+          <div class="bento-handle-meta">
+            <span class="bento-handle-label">Agent activity</span>
+            <span class="bento-handle-sources" id="sourceStats">0 sources</span>
+            <span class="bento-handle-sep">·</span>
+            <span id="graphStats">0 nodes · 0 edges</span>
+            <span class="bento-handle-sep">·</span>
+            <span id="pipelineStatus">Ready</span>
+          </div>
+          <div class="bento-chevron" aria-hidden="true">⌃</div>
+        </div>
+
+        <div class="bento-body">
+          <div class="agent-feed" id="agentFeed" aria-live="polite" aria-label="Agent activity feed"></div>
+        </div>
       </div>
 
-      <aside class="coach-panel" aria-label="AI coach chat">
-        <div class="coach-header">AI Coach</div>
-        <div class="chat-log" id="chatLog"></div>
-        <form class="chat-form" id="chatForm">
-          <input
-            id="chatInput"
-            type="text"
-            autocomplete="off"
-            placeholder="Ask for a path, review, or branch..."
-          />
-          <button type="submit">Send</button>
-        </form>
-      </aside>
-    </div>
+    </div><!-- /.app -->
 
     <script src="graph.js"></script>
     <script src="app.js"></script>

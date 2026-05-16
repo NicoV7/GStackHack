@@ -1,5 +1,101 @@
 /* LearnGraph — Main Application Logic */
 
+// --- App State Machine ---
+const appEl = document.querySelector(".app");
+
+function setAppState(state) {
+  appEl.dataset.appState = state;
+  if (state === "app") {
+    appEl.querySelector(".search-area").removeAttribute("aria-hidden");
+    appEl.querySelector(".main").removeAttribute("aria-hidden");
+    appEl.querySelector(".hero-overlay").setAttribute("aria-hidden", "true");
+  }
+}
+
+// --- Lesson Drawer ---
+const lessonDrawer = document.querySelector("#lessonDrawer");
+const lessonBackdrop = document.querySelector("#lessonBackdrop");
+const lessonDrawerClose = document.querySelector("#lessonDrawerClose");
+
+function openLessonDrawer() {
+  lessonDrawer.classList.add("open");
+  lessonDrawer.removeAttribute("aria-hidden");
+  lessonDrawerClose?.focus();
+}
+
+function closeLessonDrawer() {
+  lessonDrawer.classList.remove("open");
+  lessonDrawer.setAttribute("aria-hidden", "true");
+}
+
+lessonBackdrop?.addEventListener("click", closeLessonDrawer);
+lessonDrawerClose?.addEventListener("click", closeLessonDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && lessonDrawer.classList.contains("open")) closeLessonDrawer();
+});
+
+// --- Bento Drawer ---
+const bentoDrawer = document.querySelector("#bentoDrawer");
+const bentoHandle = document.querySelector("#bentoHandle");
+
+function openBentoDrawer() {
+  bentoDrawer.classList.add("open");
+  bentoHandle.setAttribute("aria-expanded", "true");
+  const h = bentoDrawer.getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--bento-open-offset", `${h}px`);
+}
+
+function closeBentoDrawer() {
+  bentoDrawer.classList.remove("open");
+  bentoHandle.setAttribute("aria-expanded", "false");
+  document.documentElement.style.setProperty("--bento-open-offset", "0px");
+}
+
+function toggleBentoDrawer() {
+  bentoDrawer.classList.contains("open") ? closeBentoDrawer() : openBentoDrawer();
+}
+
+bentoHandle?.addEventListener("click", toggleBentoDrawer);
+bentoHandle?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleBentoDrawer(); }
+});
+
+// --- Hero Search ---
+const heroSearchForm = document.querySelector("#heroSearchForm");
+const heroInput = document.querySelector("#heroInput");
+
+function handleHeroSearch(topic) {
+  const t = topic.trim();
+  if (!t) return;
+  if (subjectInput) subjectInput.value = t;
+  visibleSourceCount = 0;
+  updateSourceStats(0);
+  setAppState("app");
+  startPipeline(t);
+}
+
+heroSearchForm?.addEventListener("submit", (e) => {
+  e.preventDefault();
+  handleHeroSearch(heroInput.value);
+});
+
+document.querySelectorAll(".hero-quick-searches button").forEach((btn) => {
+  btn.addEventListener("click", () => handleHeroSearch(btn.dataset.topic));
+});
+
+// --- Gallery Tab (graph-embedded dropdown) ---
+const graphGalleryTab = document.querySelector("#graphGalleryTab");
+const graphGalleryToggle = document.querySelector("#graphGalleryToggle");
+const galleryCount = document.querySelector("#galleryCount");
+
+function toggleGalleryTab() {
+  const isOpen = graphGalleryTab.classList.contains("open");
+  graphGalleryTab.classList.toggle("open", !isOpen);
+  graphGalleryToggle?.setAttribute("aria-expanded", String(!isOpen));
+}
+
+graphGalleryToggle?.addEventListener("click", toggleGalleryTab);
+
 // --- DOM References ---
 const subjectForm = document.querySelector("#subjectForm");
 const subjectInput = document.querySelector("#subjectInput");
@@ -13,16 +109,6 @@ const galleryGrid = document.querySelector("#galleryGrid");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatLog = document.querySelector("#chatLog");
-
-// --- Session Identity ---
-function getSessionId() {
-  let id = localStorage.getItem('lg_session_id');
-  if (!id) {
-    id = 'session-' + crypto.randomUUID().slice(0, 8);
-    localStorage.setItem('lg_session_id', id);
-  }
-  return id;
-}
 
 // --- State ---
 let pipelineRunning = false;
@@ -46,8 +132,8 @@ GraphState.init(
       renderLessonPanel(node.lesson, node.topic);
     } else {
       renderLessonPlaceholder(node);
-      startSubPipeline(node.topic, node.id);
     }
+    openLessonDrawer();
     renderGallery();
   }
 );
@@ -89,8 +175,10 @@ function renderLessonPanel(lesson, topic) {
 
   const sourcesHtml = lesson.sources && lesson.sources.length > 0
     ? `<div class="lesson-sources">
-        <h4>Sources</h4>
-        ${lesson.sources.map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>`).join("")}
+        <div class="lesson-sources-inner">
+          <h4>Sources</h4>
+          ${lesson.sources.map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>`).join("")}
+        </div>
       </div>`
     : "";
 
@@ -132,15 +220,24 @@ function handleQuizAnswer(btn, lesson) {
   });
 
   if (isCorrect) {
-    if (feedback) feedback.textContent = "Correct. Node marked as learned.";
-    if (GraphState.activeNodeId) {
-      GraphState.markCompleted(GraphState.activeNodeId);
-    }
-    addAgentEvent("graph", `${currentTopic} marked as learned`, "done");
+    if (feedback) feedback.textContent = "Correct! Moving to the next concept...";
+    const completedId = GraphState.activeNodeId;
+    const nextId = GraphState.markCompleted(completedId);
+    addAgentEvent("graph", `${GraphState.nodes.get(completedId)?.topic || currentTopic} learned`, "done");
     updateStats();
     renderGallery();
+
+    // Auto-open lesson for the newly focused node
+    if (nextId) {
+      const nextNode = GraphState.nodes.get(nextId);
+      setTimeout(() => {
+        if (nextNode?.lesson) renderLessonPanel(nextNode.lesson, nextNode.topic);
+        else renderLessonPlaceholder(nextNode);
+        openLessonDrawer();
+      }, 520); // wait for graph animation to start
+    }
   } else {
-    if (feedback) feedback.textContent = "Incorrect — checking for missing prerequisites...";
+    if (feedback) feedback.textContent = "Incorrect — finding a prerequisite to fill the gap...";
     addAgentEvent("graph", "Quiz result: misconception detected", "working");
 
     // Trigger rewire agent
@@ -159,7 +256,6 @@ async function triggerRewire(question, wrongAnswer) {
         question,
         currentTopic,
         existingNodes: Array.from(GraphState.nodes.keys()),
-        sessionId: getSessionId(),
       }),
     });
 
@@ -196,23 +292,26 @@ async function triggerRewire(question, wrongAnswer) {
 function handleDeterministicRewire(question) {
   const prereqTopic = question.prerequisiteTopic || "Foundations";
   const prereqId = prereqTopic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const targetId = GraphState.activeNodeId || GraphState.rootId;
 
-  GraphState.addNode({
-    id: prereqId,
-    topic: prereqTopic,
-    status: "prerequisite-suggested",
-    position: { x: 0, y: 0 },
-  });
-  GraphState.addEdge({
-    id: `e-${prereqId}-${GraphState.activeNodeId}`,
-    source: prereqId,
-    target: GraphState.activeNodeId || currentTopic,
-    type: "prerequisite",
-  });
+  GraphState.addPrerequisite(
+    { id: prereqId, topic: prereqTopic, status: "prerequisite-suggested" },
+    targetId
+  );
 
-  addAgentEvent("graph", `Prerequisite suggested: ${prereqTopic}`, "done");
+  addAgentEvent("graph", `Prerequisite pulled in: ${prereqTopic}`, "done");
   updateStats();
   renderGallery();
+
+  // Open the prerequisite lesson so the learner sees what to do next
+  setTimeout(() => {
+    const prereqNode = GraphState.nodes.get(prereqId);
+    if (prereqNode) {
+      if (prereqNode.lesson) renderLessonPanel(prereqNode.lesson, prereqNode.topic);
+      else renderLessonPlaceholder(prereqNode);
+      openLessonDrawer();
+    }
+  }, 520);
 }
 
 // --- SSE Event Handler ---
@@ -225,15 +324,6 @@ function handleSSEEvent(event) {
       addAgentEvent("search", `Found: ${event.source.title}`, "done");
       updateSourceStats(1);
       break;
-    case "decomposition.started":
-      addAgentEvent("graph", `Planning lesson branches for ${event.topic || currentTopic}`, "working");
-      break;
-    case "decomposition.plan_created":
-      addAgentEvent("graph", `Branch planned: ${event.plan.subTopic}`, "done");
-      break;
-    case "decomposition.complete":
-      addAgentEvent("graph", `${event.count} branches planned`, "done");
-      break;
     case "lesson.writing":
       addAgentEvent("lesson", `Writing lesson: ${event.topic || currentTopic}`, "working");
       break;
@@ -243,30 +333,13 @@ function handleSSEEvent(event) {
     case "lesson.quiz_generated":
       addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} questions`, "done");
       if (event.lesson) {
-        // Route lesson to the correct node (by nodeId from backend, or fallback to active)
-        const targetId = event.nodeId || GraphState.activeNodeId;
-        if (targetId) {
-          GraphState.setLesson(targetId, event.lesson);
-          const targetNode = GraphState.nodes.get(targetId);
-          if (targetNode) targetNode.status = "active";
+        currentLesson = event.lesson;
+        // Store lesson on the active graph node
+        if (GraphState.activeNodeId) {
+          GraphState.setLesson(GraphState.activeNodeId, event.lesson);
         }
-        // Root only owns root-level lessons. Branch lessons stay on their pathway nodes.
-        if (!event.nodeId && GraphState.rootId && !GraphState.nodes.get(GraphState.rootId)?.lesson) {
-          GraphState.setLesson(GraphState.rootId, event.lesson);
-        }
-        // Render if this is for the active node or no lesson displayed yet
-        if (targetId === GraphState.activeNodeId || !currentLesson) {
-          currentLesson = event.lesson;
-          renderLessonPanel(event.lesson, event.lesson.title || currentTopic);
-        }
-        renderGallery();
+        renderLessonPanel(event.lesson, currentTopic);
       }
-      break;
-    case "visualization.started":
-      addAgentEvent("lesson", `Designing visual for ${event.lessonTitle || currentTopic}`, "working");
-      break;
-    case "visualization.complete":
-      addAgentEvent("lesson", "Visual card generated", "done");
       break;
     case "graph.node_added":
       if (graphEmpty) graphEmpty.classList.add("hidden");
@@ -276,27 +349,40 @@ function handleSSEEvent(event) {
       break;
     case "graph.edge_added":
       GraphState.addEdge(event.edge);
-      if (event.source === "gbrain.related") {
-        const from = GraphState.nodes.get(event.edge.source);
-        const to = GraphState.nodes.get(event.edge.target);
-        if (from && to) addAgentEvent("graph", `Related: ${from.topic} → ${to.topic}`, "done");
-      }
       updateStats();
       break;
     case "graph.prerequisite_suggested":
-      GraphState.addNode({ ...event.node, status: "prerequisite-suggested" });
+      GraphState.addPrerequisite(
+        { ...event.node, status: "prerequisite-suggested" },
+        GraphState.activeNodeId || GraphState.rootId
+      );
       addAgentEvent("graph", `Prerequisite: ${event.node.topic} — ${event.reason || ""}`, "done");
       updateStats();
       renderGallery();
       break;
+    case "decomposition.started":
+      addAgentEvent("graph", `Planning branches for "${event.topic || currentTopic}"`, "working");
+      break;
+    case "decomposition.plan_created":
+      addAgentEvent("graph", `Branch: ${event.plan?.subTopic || ""}`, "done");
+      break;
+    case "decomposition.complete":
+      addAgentEvent("graph", `${event.count} branches planned`, "done");
+      break;
+    case "visualization.started":
+      addAgentEvent("lesson", `Designing visual: ${event.lessonTitle || currentTopic}`, "working");
+      break;
+    case "visualization.complete":
+      addAgentEvent("lesson", "Visual ready", "done");
+      break;
     case "gbrain.context_loaded":
-      addAgentEvent("info", `GBrain memory loaded (${event.count || 0} notes)`, "done");
+      addAgentEvent("info", `Memory loaded (${event.count || 0} notes)`, "done");
       break;
     case "gbrain.memory_written":
-      addAgentEvent("info", `GBrain memory saved: ${event.topic || "session"}`, "done");
+      addAgentEvent("info", `Memory saved: ${event.topic || "session"}`, "done");
       break;
     case "gbrain.offline":
-      addAgentEvent("info", "GBrain offline — using cached/local memory", "error");
+      addAgentEvent("info", "GBrain offline — local fallback active", "error");
       break;
     case "pipeline.complete":
       addAgentEvent("info", `Pipeline complete (${event.totalMs}ms)`, "done");
@@ -317,26 +403,14 @@ async function startPipeline(topic) {
   pipelineRunning = true;
   currentTopic = topic;
   clearAgentFeed();
+  GraphState.reset();
+  openBentoDrawer();
   if (graphEmpty) graphEmpty.classList.add("hidden");
   if (pipelineStatus) pipelineStatus.textContent = "Running...";
 
   // Add root node
   const topicId = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  const existingTopicNode = GraphState.findByTopic(topic);
-  if (existingTopicNode?.lesson) {
-    GraphState.setActive(existingTopicNode.id);
-    renderLessonPanel(existingTopicNode.lesson, existingTopicNode.topic);
-    addAgentEvent("info", `"${existingTopicNode.topic}" already exists — opening saved lesson`, "done");
-    pipelineRunning = false;
-    if (pipelineStatus) pipelineStatus.textContent = "Saved lesson";
-    return;
-  }
-
-  GraphState.addRootNode(topicId, topic, existingTopicNode?.lesson || null);
-  if (!existingTopicNode?.lesson) {
-    renderLessonPlaceholder({ id: topicId, topic });
-    currentLesson = null;
-  }
+  GraphState.addRootNode(topicId, topic, null);
   updateStats();
   renderGallery();
 
@@ -347,7 +421,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, sessionId: getSessionId(), existingNodes: GraphState.snapshotNodes() }),
+      body: JSON.stringify({ topic }),
     });
 
     const reader = res.body.getReader();
@@ -376,46 +450,6 @@ async function startPipeline(topic) {
   pipelineRunning = false;
 }
 
-async function startSubPipeline(topic, nodeId) {
-  if (pipelineRunning) return;
-  pipelineRunning = true;
-  currentTopic = topic;
-
-  if (pipelineStatus) pipelineStatus.textContent = "Loading...";
-  addAgentEvent("info", `Loading lesson for "${topic}"`, "working");
-
-  try {
-    const res = await fetch("/api/learn", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, sessionId: getSessionId(), nodeId, mode: "single" }),
-    });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n\n");
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          try {
-            const event = JSON.parse(line.slice(6));
-            handleSSEEvent(event);
-          } catch { /* skip */ }
-        }
-      }
-    }
-  } catch {
-    addAgentEvent("info", "Failed to load lesson", "error");
-  }
-  pipelineRunning = false;
-}
-
 function useFallbackData(topic) {
   const normalized = topic.toLowerCase();
   const concepts = fallbackSeeds[normalized] || [
@@ -423,7 +457,7 @@ function useFallbackData(topic) {
     `${topic} trap`, `${topic} application`, `${topic} review`
   ];
 
-  concepts.forEach((concept, i) => {
+  concepts.forEach((concept) => {
     const id = concept.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     GraphState.addNode({
       id,
@@ -478,6 +512,10 @@ function renderGallery() {
   if (!galleryGrid) return;
 
   const nodes = Array.from(GraphState.nodes.values());
+
+  // Sync count badge on gallery toggle button
+  if (galleryCount) galleryCount.textContent = nodes.length;
+
   if (nodes.length === 0) {
     galleryGrid.innerHTML = `<p class="gallery-empty">Generated lesson cards will appear here.</p>`;
     return;
@@ -487,13 +525,15 @@ function renderGallery() {
     .map((node) => {
       const status = node.status === "prerequisite-suggested" ? "prereq" : node.status;
       return `
-        <button class="gallery-item" type="button" data-node-id="${node.id}">
-          <span class="gallery-thumb">${node.topic.charAt(0)}</span>
-          <span>
-            <strong>${node.topic}</strong>
-            <small>${node.lesson ? "Lesson ready" : "Waiting for lesson agent"}</small>
-          </span>
-          <em>${status}</em>
+        <button class="gallery-item" type="button" data-node-id="${node.id}" role="listitem">
+          <div class="gallery-item-inner">
+            <span class="gallery-thumb">${node.topic.charAt(0).toUpperCase()}</span>
+            <span>
+              <strong>${node.topic}</strong>
+              <small>${node.lesson ? "Lesson ready" : "Waiting for lesson agent"}</small>
+            </span>
+            <em>${status}</em>
+          </div>
         </button>
       `;
     })
@@ -504,12 +544,9 @@ function renderGallery() {
       const node = GraphState.nodes.get(item.dataset.nodeId);
       if (!node) return;
       GraphState.setActive(node.id);
-      if (node.lesson) {
-        renderLessonPanel(node.lesson, node.topic);
-      } else {
-        renderLessonPlaceholder(node);
-        startSubPipeline(node.topic, node.id);
-      }
+      if (node.lesson) renderLessonPanel(node.lesson, node.topic);
+      else renderLessonPlaceholder(node);
+      openLessonDrawer();
       renderGallery();
     });
   });
@@ -537,7 +574,7 @@ subjectForm.addEventListener("submit", (event) => {
 document.querySelectorAll(".quick-searches button").forEach((button) => {
   button.addEventListener("click", () => {
     const topic = button.dataset.topic;
-    subjectInput.value = topic;
+    if (subjectInput) subjectInput.value = topic;
     visibleSourceCount = 0;
     updateSourceStats(0);
     startPipeline(topic);
@@ -575,3 +612,206 @@ if (chatForm) {
 
 addChatMessage("ai", "Search a subject and I will research, write, map, quiz, and rewire the lesson graph.");
 renderGallery();
+
+// ── Hero Graph: scripted demo of the real app behavior ────────────
+(function heroGraphDemo() {
+  const svg = document.getElementById("heroGraphSvg");
+  const container = document.getElementById("heroNodesPreview");
+  if (!svg || !container) return;
+
+  // Mini graph state for the hero preview
+  const RING_RADIUS = 115;
+  let nodes = [];    // { id, label, status, x, y }
+  let edges = [];    // { a, b, prereq }
+  let focusIdx = 0; // index in nodes[] that sits at center
+
+  // Initial graph: Derivatives topic
+  function initGraph() {
+    nodes = [
+      { id: "n0", label: "Derivatives",   status: "focus" },
+      { id: "n1", label: "Limits",        status: "idle"  },
+      { id: "n2", label: "Slope",         status: "idle"  },
+      { id: "n3", label: "Chain rule",    status: "idle"  },
+      { id: "n4", label: "Product rule",  status: "idle"  },
+      { id: "n5", label: "Functions",     status: "idle"  },
+    ];
+    edges = [
+      { a: "n0", b: "n1" }, { a: "n0", b: "n2" },
+      { a: "n0", b: "n3" }, { a: "n0", b: "n4" },
+      { a: "n3", b: "n5" }, { a: "n4", b: "n5" },
+    ];
+    focusIdx = 0;
+    computePositions();
+    renderHeroGraph(true);
+  }
+
+  function computePositions() {
+    const focus = nodes[focusIdx];
+    // BFS from focus to assign rings
+    const rings = new Map([[focus.id, 0]]);
+    const queue = [focus.id];
+    while (queue.length) {
+      const cur = queue.shift();
+      const ring = rings.get(cur);
+      edges.forEach(({ a, b }) => {
+        const neighbor = a === cur ? b : b === cur ? a : null;
+        if (neighbor && !rings.has(neighbor)) {
+          rings.set(neighbor, ring + 1);
+          queue.push(neighbor);
+        }
+      });
+    }
+    // Group by ring
+    const byRing = new Map();
+    nodes.forEach((n) => {
+      const r = rings.get(n.id) ?? 1;
+      if (!byRing.has(r)) byRing.set(r, []);
+      byRing.get(r).push(n);
+    });
+    // Assign x, y
+    byRing.forEach((group, ring) => {
+      if (ring === 0) { group[0].x = 0; group[0].y = 0; return; }
+      const count = group.length;
+      const radius = RING_RADIUS * ring;
+      const baseAngle = ring % 2 === 0 ? 0 : -Math.PI / 2;
+      group.forEach((n, i) => {
+        const angle = baseAngle + (2 * Math.PI * i) / count;
+        n.x = Math.round(radius * Math.cos(angle));
+        n.y = Math.round(radius * Math.sin(angle));
+      });
+    });
+  }
+
+  function renderHeroGraph(initial = false) {
+    const w = container.offsetWidth;
+    const h = container.offsetHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    // Position DOM nodes
+    nodes.forEach((n, i) => {
+      let el = document.getElementById("h_" + n.id);
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "h_" + n.id;
+        el.className = "hero-node-dot";
+        el.style.opacity = "0";
+        el.style.transform = "translate(-50%, -50%) scale(0.7)";
+        el.style.transition = [
+          "left 520ms cubic-bezier(0.32,0.72,0,1)",
+          "top 520ms cubic-bezier(0.32,0.72,0,1)",
+          "opacity 300ms ease",
+          "transform 300ms ease",
+          "border-color 300ms ease",
+          "background 300ms ease",
+          "color 300ms ease",
+        ].join(", ");
+        container.appendChild(el);
+        requestAnimationFrame(() => {
+          el.style.opacity = "1";
+          el.style.transform = "translate(-50%, -50%) scale(1)";
+        });
+      }
+      el.textContent = n.label;
+      el.style.left = `${cx + n.x}px`;
+      el.style.top  = `${cy + n.y}px`;
+
+      // Status classes
+      el.classList.remove("root", "done", "hero-prereq");
+      if (n.status === "focus")     el.classList.add("root");
+      if (n.status === "completed") el.classList.add("done");
+      if (n.status === "prereq")    el.classList.add("hero-prereq");
+
+      // Entrance stagger on initial load
+      if (initial) {
+        el.style.transitionDelay = `${i * 120}ms`;
+        setTimeout(() => { el.style.transitionDelay = ""; }, 800 + i * 120);
+      }
+    });
+
+    // Redraw edges after position transition
+    setTimeout(() => drawHeroEdgesSvg(cx, cy), initial ? 500 : 340);
+  }
+
+  function drawHeroEdgesSvg(cx, cy) {
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    svg.innerHTML = edges.map(({ a, b, prereq }, i) => {
+      const na = nodeMap.get(a);
+      const nb = nodeMap.get(b);
+      if (!na || !nb) return "";
+      const x1 = cx + na.x, y1 = cy + na.y;
+      const x2 = cx + nb.x, y2 = cy + nb.y;
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const color = prereq ? "rgba(217,119,6,0.5)" : "rgba(242,240,220,0.18)";
+      const dash  = prereq ? "4 3" : "none";
+      return `<line
+        x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+        stroke="${color}" stroke-width="1.2" stroke-dasharray="${dash}"
+        stroke-dashoffset="${len}" stroke-linecap="round"
+        style="stroke-dasharray:${len};stroke-dashoffset:${len};
+               animation:edgeDraw 500ms cubic-bezier(0.23,1,0.32,1) ${i * 80}ms forwards"/>`;
+    }).join("");
+  }
+
+  // ── Demo script ────────────────────────────────────────────────
+  // Each step: wait N ms, then mutate state and re-render
+
+  function completeNode(id) {
+    const n = nodes.find((x) => x.id === id);
+    if (n) n.status = "completed";
+    // New focus = first non-completed connected node
+    const connected = edges
+      .filter(({ a, b }) => a === id || b === id)
+      .map(({ a, b }) => a === id ? b : a)
+      .find((nid) => {
+        const target = nodes.find((x) => x.id === nid);
+        return target && target.status !== "completed";
+      });
+    if (connected) {
+      const newFocus = nodes.find((x) => x.id === connected);
+      if (newFocus) {
+        nodes.forEach((x) => { if (x.status === "focus") x.status = "completed"; });
+        newFocus.status = "focus";
+        focusIdx = nodes.indexOf(newFocus);
+      }
+    }
+    computePositions();
+    renderHeroGraph();
+  }
+
+  function injectPrereq(label, targetId) {
+    const prereqId = "prereq_" + Date.now();
+    nodes.push({ id: prereqId, label, status: "prereq", x: 0, y: 0 });
+    edges.push({ a: prereqId, b: targetId, prereq: true });
+    // Shift focus to prereq
+    nodes.forEach((x) => { if (x.status === "focus") x.status = "idle"; });
+    const pn = nodes.find((x) => x.id === prereqId);
+    pn.status = "focus";
+    focusIdx = nodes.indexOf(pn);
+    computePositions();
+    renderHeroGraph();
+  }
+
+  // Kick off
+  initGraph();
+
+  // Sequence: complete → re-center → fail → inject prereq → loop
+  const script = [
+    [2800,  () => completeNode("n0")],                              // complete Derivatives → center shifts to Limits
+    [5400,  () => completeNode("n1")],                              // complete Limits → center shifts to Slope
+    [8000,  () => injectPrereq("Epsilon-delta", "n2")],             // fail Slope → pull in prerequisite
+    [11200, () => completeNode(nodes.find(n=>n.label==="Epsilon-delta")?.id)], // complete prereq → back to Slope
+    [14000, () => completeNode("n2")],                              // complete Slope
+    [17000, () => { initGraph(); }],                                // reset and loop
+  ];
+
+  function scheduleScript(offset = 0) {
+    script.forEach(([delay, fn]) => {
+      setTimeout(() => { fn(); }, delay + offset);
+    });
+    // Loop: restart after last step + buffer
+    const total = script[script.length - 1][0] + 3200;
+    setTimeout(() => scheduleScript(0), total + offset);
+  }
+  scheduleScript(0);
+})();
