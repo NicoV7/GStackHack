@@ -1,6 +1,6 @@
 /**
- * Unified LLM provider — priority: ANTHROPIC_API_KEY > GEMINI_API_KEY > OLLAMA.
- * Agents catch errors and use demo-cache fallbacks.
+ * Unified LLM provider — cascading fallback: Ollama > Anthropic > Gemini.
+ * Each provider is tried in order; failures fall through to the next.
  */
 
 import { z } from "zod";
@@ -16,13 +16,36 @@ export async function llmChat(
   system: string,
   userMessage: string
 ): Promise<string> {
+  const errors: string[] = [];
+
+  // Ollama first (free, local or tunneled)
+  if (OLLAMA_BASE) {
+    try {
+      return await ollamaChat(system, userMessage);
+    } catch (e) {
+      errors.push(`Ollama: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Anthropic second
   if (ANTHROPIC_KEY) {
-    return anthropicChat(system, userMessage);
+    try {
+      return await anthropicChat(system, userMessage);
+    } catch (e) {
+      errors.push(`Anthropic: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+
+  // Gemini last
   if (GEMINI_KEY) {
-    return geminiChat(system, userMessage);
+    try {
+      return await geminiChat(system, userMessage);
+    } catch (e) {
+      errors.push(`Gemini: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
-  return ollamaChat(system, userMessage);
+
+  throw new Error(`All LLM providers failed: ${errors.join(" | ")}`);
 }
 
 async function anthropicChat(system: string, userMessage: string): Promise<string> {
