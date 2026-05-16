@@ -153,13 +153,21 @@ export async function POST(req: Request) {
           : { status: "fulfilled", value: await lessonAgent(effectivePlans[0].subTopic, sources, emit, planNodeIds[0], planContext[0]) };
         lessonResults = [primaryResult, ...secondaryResults];
       } else {
-        lessonResults = await Promise.allSettled(
-          effectivePlans.map((plan, i) => {
-            const targetNode = existingById.get(planNodeIds[i]);
-            if (targetNode?.hasLesson) return Promise.reject(new Error("lesson already exists"));
-            return lessonAgent(plan.subTopic, sources, emit, planNodeIds[i], planContext[i]);
-          })
-        );
+        // Sequential lesson generation — parallel overwhelms the 4 vCPU Ollama container
+        lessonResults = [];
+        for (let i = 0; i < effectivePlans.length; i++) {
+          const targetNode = existingById.get(planNodeIds[i]);
+          if (targetNode?.hasLesson) {
+            lessonResults.push({ status: "rejected", reason: new Error("lesson already exists") });
+            continue;
+          }
+          try {
+            const lesson = await lessonAgent(effectivePlans[i].subTopic, sources, emit, planNodeIds[i], planContext[i]);
+            lessonResults.push({ status: "fulfilled", value: lesson });
+          } catch (e) {
+            lessonResults.push({ status: "rejected", reason: e });
+          }
+        }
       }
       const lessons = lessonResults
         .filter((r): r is PromiseFulfilledResult<Lesson> => r.status === "fulfilled")

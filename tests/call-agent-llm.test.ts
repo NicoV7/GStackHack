@@ -75,25 +75,17 @@ describe("callAgentLLM", () => {
     expect(String(mockFetch.mock.calls[0][0])).toContain("/api/chat");
   });
 
-  it("falls back to Anthropic when Ollama fails and Anthropic is configured", async () => {
+  it("throws when Ollama fails and Anthropic is disabled (no credits)", async () => {
     process.env.ANTHROPIC_API_KEY = "anthropic-key";
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: false,
-        text: async () => "ollama offline",
-        json: async () => ({}),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        text: async () => "",
-        json: async () => ({ content: [{ text: "{\"name\":\"fallback\",\"value\":5}" }] }),
-      });
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      text: async () => "ollama offline",
+      json: async () => ({}),
+    });
 
-    const result = await callAgentLLM(TestSchema, "system", "user");
-
-    expect(result).toEqual({ name: "fallback", value: 5 });
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    await expect(callAgentLLM(TestSchema, "system", "user")).rejects.toThrow(/All LLM providers failed/);
+    // Only Ollama is called — Anthropic is commented out (no credits)
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(String(mockFetch.mock.calls[0][0])).toContain("/api/chat");
-    expect(String(mockFetch.mock.calls[1][0])).toBe("https://api.anthropic.com/v1/messages");
   });
 });

@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
 const DEFAULT_OLLAMA_MODEL = "qwen3:8b";
-const DEFAULT_LLM_TIMEOUT_MS = 25_000;
+const DEFAULT_LLM_TIMEOUT_MS = 180_000;
 
 export async function llmChat(
   system: string,
@@ -25,14 +25,15 @@ export async function llmChat(
     }
   }
 
-  // Anthropic second
-  if (anthropicKey()) {
-    try {
-      return await anthropicChat(system, userMessage);
-    } catch (e) {
-      errors.push(`Anthropic: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+  // Anthropic disabled — no credits remaining
+  // To re-enable: uncomment and add ANTHROPIC_API_KEY to env
+  // if (anthropicKey()) {
+  //   try {
+  //     return await anthropicChat(system, userMessage);
+  //   } catch (e) {
+  //     errors.push(`Anthropic: ${e instanceof Error ? e.message : String(e)}`);
+  //   }
+  // }
 
   throw new Error(`All LLM providers failed: ${errors.join(" | ")}`);
 }
