@@ -1,4 +1,4 @@
-import { ollamaChat } from "../ollama";
+import { llmChat } from "../llm";
 import type { SSEEvent, Source, Lesson } from "../types";
 import { LessonSchema } from "./schemas";
 import { LESSON_SYSTEM_PROMPT } from "./prompts";
@@ -18,7 +18,7 @@ export async function lessonAgent(
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.excerpt}\nURL: ${s.url}`)
       .join("\n\n");
 
-    const text = await ollamaChat(
+    const text = await llmChat(
       LESSON_SYSTEM_PROMPT,
       `Create a lesson about: ${topic}\n\nWeb research sources:\n${sourcesText}`
     );

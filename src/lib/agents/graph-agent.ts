@@ -1,4 +1,4 @@
-import { ollamaChat } from "../ollama";
+import { llmChat } from "../llm";
 import type { SSEEvent, Lesson, GraphNode, GraphEdge } from "../types";
 import { GraphOutputSchema } from "./schemas";
 import { GRAPH_SYSTEM_PROMPT } from "./prompts";
@@ -18,7 +18,7 @@ export async function graphAgent(
   emit: EmitFn
 ): Promise<GraphAgentResult> {
   try {
-    const text = await ollamaChat(
+    const text = await llmChat(
       GRAPH_SYSTEM_PROMPT,
       `Current topic: ${topic}\nLesson title: ${lesson.title}\nExisting nodes: [${existingNodeIds.join(", ")}]\n\nSuggest related topics for the knowledge graph.`
     );

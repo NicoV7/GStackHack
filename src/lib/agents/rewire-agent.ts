@@ -1,4 +1,4 @@
-import { ollamaChat } from "../ollama";
+import { llmChat } from "../llm";
 import type { SSEEvent, Question } from "../types";
 import { RewireOutputSchema } from "./schemas";
 import { REWIRE_SYSTEM_PROMPT } from "./prompts";
@@ -16,7 +16,7 @@ export async function rewireAgent(input: RewireInput, emit: EmitFn) {
   const correctOption = input.question.options.find((o) => o.correct);
 
   try {
-    const text = await ollamaChat(
+    const text = await llmChat(
       REWIRE_SYSTEM_PROMPT,
       `Topic: ${input.currentTopic}
 Question: ${input.question.text}
