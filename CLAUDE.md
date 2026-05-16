@@ -13,14 +13,20 @@ npm run build    # Production build
 ## Architecture
 
 Hybrid: vanilla JS frontend (public/) + Next.js API routes (src/app/api/).
-- `POST /api/learn` — SSE pipeline: Browser Agent (Tavily) → Lesson Agent (Claude) → Graph Agent (Claude)
+- `POST /api/learn` — SSE pipeline: Browser Agent (Tavily) → Lesson Agent (Ollama) → Graph Agent (Ollama)
 - `POST /api/rewire` — Rewire Agent: wrong quiz answer → prerequisite node
 
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` and fill in:
-- `ANTHROPIC_API_KEY` — Claude API key
-- `TAVILY_API_KEY` — Tavily search API key
+- `TAVILY_API_KEY` — Tavily search API key (optional — falls back to demo cache)
+- `OLLAMA_URL` — Ollama server URL (default: http://localhost:11434)
+- `OLLAMA_MODEL` — Ollama model name (default: qwen3:8b)
+
+## Prerequisites
+
+- Ollama running locally: `ollama serve`
+- A model pulled: `ollama pull qwen3:8b`
 
 ## Testing
 

@@ -1,12 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ollamaChat } from "../ollama";
 import type { SSEEvent, Lesson, GraphNode, GraphEdge } from "../types";
 import { GraphOutputSchema } from "./schemas";
 import { GRAPH_SYSTEM_PROMPT } from "./prompts";
 import { CACHED_GRAPH_NODES, CACHED_GRAPH_EDGES } from "../demo-cache";
 
 type EmitFn = (event: SSEEvent) => void;
-
-const client = new Anthropic();
 
 export interface GraphAgentResult {
   newNodes: GraphNode[];
@@ -20,20 +18,16 @@ export async function graphAgent(
   emit: EmitFn
 ): Promise<GraphAgentResult> {
   try {
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: GRAPH_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Current topic: ${topic}\nLesson title: ${lesson.title}\nExisting nodes: [${existingNodeIds.join(", ")}]\n\nSuggest related topics for the knowledge graph.`,
-        },
-      ],
-    });
+    const text = await ollamaChat(
+      GRAPH_SYSTEM_PROMPT,
+      `Current topic: ${topic}\nLesson title: ${lesson.title}\nExisting nodes: [${existingNodeIds.join(", ")}]\n\nSuggest related topics for the knowledge graph.`
+    );
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
-    const jsonStr = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+    const jsonStr = text
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/^```(?:json)?\n?/m, "")
+      .replace(/\n?```$/m, "")
+      .trim();
     const parsed = GraphOutputSchema.safeParse(JSON.parse(jsonStr));
 
     if (!parsed.success) {

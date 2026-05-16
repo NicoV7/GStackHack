@@ -1,12 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { ollamaChat } from "../ollama";
 import type { SSEEvent, Source, Lesson } from "../types";
 import { LessonSchema } from "./schemas";
 import { LESSON_SYSTEM_PROMPT } from "./prompts";
 import { CACHED_LESSONS } from "../demo-cache";
 
 type EmitFn = (event: SSEEvent) => void;
-
-const client = new Anthropic();
 
 export async function lessonAgent(
   topic: string,
@@ -20,22 +18,17 @@ export async function lessonAgent(
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.excerpt}\nURL: ${s.url}`)
       .join("\n\n");
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system: LESSON_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `Create a lesson about: ${topic}\n\nWeb research sources:\n${sourcesText}`,
-        },
-      ],
-    });
+    const text = await ollamaChat(
+      LESSON_SYSTEM_PROMPT,
+      `Create a lesson about: ${topic}\n\nWeb research sources:\n${sourcesText}`
+    );
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
-
-    // Strip markdown fences if present
-    const jsonStr = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+    // Strip markdown fences and thinking tags if present
+    const jsonStr = text
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/^```(?:json)?\n?/m, "")
+      .replace(/\n?```$/m, "")
+      .trim();
     const parsed = LessonSchema.safeParse(JSON.parse(jsonStr));
 
     if (!parsed.success) {
