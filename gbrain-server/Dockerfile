@@ -1,13 +1,13 @@
 FROM oven/bun:latest
 
-# Install gbrain globally
-RUN bun install -g gbrain
+# Pin the CLI version used by local development.
+RUN bun install -g gbrain@0.33.0
 
-# Initialize a fresh brain with PGLite
-RUN gbrain init --pglite
+COPY start.sh /usr/local/bin/start-gbrain
+RUN chmod +x /usr/local/bin/start-gbrain
 
 # Expose the MCP HTTP server port
 EXPOSE 4100
 
-# Run gbrain serve with HTTP mode
-CMD ["gbrain", "serve", "--http", "--port", "4100"]
+# Run gbrain serve with HTTP mode. start.sh respects Azure's PORT env.
+CMD ["start-gbrain"]

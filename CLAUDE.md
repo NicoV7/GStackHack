@@ -13,22 +13,24 @@ npm run build    # Production build
 ## Architecture
 
 Hybrid: vanilla JS frontend (public/) + Next.js API routes (src/app/api/).
-- `POST /api/learn` — SSE pipeline: GBrain Profile → Browser Agent (Tavily) → Decomposition Agent → Lesson Agents (parallel, Gemini/Ollama) → Visualization Agent + Graph Agent (parallel) → GBrain Persist
+- `POST /api/learn` — SSE pipeline: GBrain Profile → Browser Agent (Tavily) → Decomposition Agent → Lesson Agents (parallel, Ollama/qwen with Anthropic fallback) → Visualization Agent + Graph Agent (parallel) → GBrain Persist
 - `POST /api/rewire` — Rewire Agent: wrong quiz answer → prerequisite node
 
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` and fill in:
 - `TAVILY_API_KEY` — Tavily search API key (optional — falls back to demo cache)
-- `GEMINI_API_KEY` — Gemini API key for cloud LLM
-- `OLLAMA_URL` — Ollama server URL (default: http://localhost:11434)
+- `OLLAMA_URL` — Azure Ollama/qwen endpoint for the web backend (`http://learngraph-ollama.westus2.azurecontainer.io:11434` in production)
 - `OLLAMA_MODEL` — Ollama model name (default: qwen3:8b)
-- `GBRAIN_URL` — GBrain MCP server URL (default: http://localhost:4100)
+- `LLM_TIMEOUT_MS` — provider timeout before fallback (default: 25000)
+- `ANTHROPIC_API_KEY` — optional paid fallback if Ollama/Azure is unavailable
+- `GBRAIN_URL` — Azure GBrain MCP server origin (`http://learngraph-gbrain.westus2.azurecontainer.io:4100` in production); the app calls `${GBRAIN_URL}/mcp`
 
 ## Prerequisites
 
-- Ollama running locally: `ollama serve` (OR set GEMINI_API_KEY for cloud)
-- GBrain serving: `gbrain serve --http --port 4100` (optional — app falls back to defaults)
+- Ollama/qwen running on Azure and reachable from the web app container
+- GBrain running on Azure and reachable from the web app container
+- Localhost defaults are for local dev only; Azure should communicate through Azure endpoints.
 
 ## Testing
 

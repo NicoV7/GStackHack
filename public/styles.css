@@ -1633,6 +1633,52 @@ body {
   outline-offset: 2px;
 }
 
+/* ─── Deep Dive (Mermaid lesson panels) ─────────────────────────── */
+.deep-dive-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-bright);
+  background: rgba(242, 240, 220, 0.04);
+  color: var(--ink-2);
+  font-family: 'Geist', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 180ms var(--ease-snappy), color 180ms var(--ease-snappy), transform 160ms var(--spring);
+}
+.deep-dive-btn:hover { border-color: var(--accent); color: var(--accent-hi); }
+.deep-dive-btn:active { transform: scale(0.96); }
+
+.deep-dive-content { margin-top: 14px; display: flex; flex-direction: column; gap: 16px; }
+.deep-dive-section { font-size: 13px; line-height: 1.65; color: var(--ink-2); }
+.deep-dive-section p { margin-bottom: 8px; }
+.mermaid-section {
+  background: rgba(242, 240, 220, 0.03);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 12px;
+  overflow-x: auto;
+}
+.example-section h3 { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.worked-example {
+  white-space: pre-wrap;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  color: var(--ink-2);
+}
+.comparison-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.comparison-table th, .comparison-table td { padding: 7px 10px; border: 1px solid var(--line); text-align: left; }
+.comparison-table th { background: rgba(242, 240, 220, 0.05); color: var(--ink); font-weight: 600; }
+
 /* ─── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   body { overflow: hidden; }

@@ -10,5 +10,8 @@ if [ ! -d "$HOME/.gbrain" ]; then
   gbrain init --pglite
 fi
 
-echo "Starting GBrain MCP server on port 4100..."
-exec gbrain serve --http --port 4100
+PORT="${PORT:-4100}"
+GBRAIN_BIN="${GBRAIN_BIN:-gbrain}"
+
+echo "Starting GBrain MCP server on port ${PORT}..."
+exec "$GBRAIN_BIN" serve --http --port "$PORT"

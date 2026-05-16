@@ -1,6 +1,6 @@
 import { createSSEStream, sseResponse } from "@/lib/sse";
 import { rewireAgent } from "@/lib/agents/rewire-agent";
-import { addWeakArea, putConceptMemory, safeSessionId } from "@/lib/gbrain";
+import { addWeakArea, getGbrainDiagnostic, putConceptMemory, safeSessionId } from "@/lib/gbrain";
 import type { Question, SSEEvent } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
         }
         emit(allWritten
           ? { type: "gbrain.memory_written", topic: body.currentTopic }
-          : { type: "gbrain.offline", reason: "misconception_write_failed" });
+          : { type: "gbrain.offline", reason: "misconception_write_failed", diagnostic: getGbrainDiagnostic() });
       }
 
       emit({ type: "pipeline.complete", totalMs: 0 });

@@ -1,16 +1,13 @@
 /**
- * Unified LLM provider — cascading fallback: Ollama > Anthropic > Gemini.
- * Each provider is tried in order; failures fall through to the next.
+ * Unified LLM provider — cascading fallback: Ollama > Anthropic.
+ * Gemini is intentionally not used because the demo has no Gemini credits.
  */
 
 import { z } from "zod";
 
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const OLLAMA_BASE = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3:8b";
+const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
+const DEFAULT_OLLAMA_MODEL = "qwen3:8b";
+const DEFAULT_LLM_TIMEOUT_MS = 25_000;
 
 export async function llmChat(
   system: string,
@@ -19,7 +16,8 @@ export async function llmChat(
   const errors: string[] = [];
 
   // Ollama first (free, local or tunneled)
-  if (OLLAMA_BASE) {
+  const ollama = ollamaBase();
+  if (ollama) {
     try {
       return await ollamaChat(system, userMessage);
     } catch (e) {
@@ -28,7 +26,7 @@ export async function llmChat(
   }
 
   // Anthropic second
-  if (ANTHROPIC_KEY) {
+  if (anthropicKey()) {
     try {
       return await anthropicChat(system, userMessage);
     } catch (e) {
@@ -36,102 +34,89 @@ export async function llmChat(
     }
   }
 
-  // Gemini last
-  if (GEMINI_KEY) {
-    try {
-      return await geminiChat(system, userMessage);
-    } catch (e) {
-      errors.push(`Gemini: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
   throw new Error(`All LLM providers failed: ${errors.join(" | ")}`);
 }
 
 async function anthropicChat(system: string, userMessage: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_KEY!,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      system,
-      messages: [{ role: "user", content: userMessage }],
-    }),
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Anthropic error: ${res.status} ${errorText}`);
-  }
-
-  const data = await res.json();
-  return data.content?.[0]?.text ?? "";
-}
-
-async function geminiChat(system: string, userMessage: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: system }],
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey()!,
+        "anthropic-version": "2023-06-01",
       },
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userMessage }],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      },
-    }),
-  });
+      body: JSON.stringify({
+        model: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
+        max_tokens: 1024,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Gemini error: ${res.status} ${errorText}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Anthropic error: ${res.status} ${errorText}`);
+    }
+
+    const data = await res.json();
+    return data.content?.[0]?.text ?? "";
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  return text;
 }
 
 async function ollamaChat(system: string, userMessage: string): Promise<string> {
   // /no_think disables qwen3 reasoning mode — avoids wasting tokens on internal monologue
   const systemWithNoThink = `/no_think\n${system}`;
-  const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      messages: [
-        { role: "system", content: systemWithNoThink },
-        { role: "user", content: userMessage },
-      ],
-      stream: false,
-      options: {
-        temperature: 0.7,
-        num_predict: 2048,
-      },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), llmTimeoutMs());
+  try {
+    const res = await fetch(`${ollamaBase()}/api/chat`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL,
+        messages: [
+          { role: "system", content: systemWithNoThink },
+          { role: "user", content: userMessage },
+        ],
+        stream: false,
+        options: {
+          temperature: 0.7,
+          num_predict: 2048,
+        },
+      }),
+    });
 
-  if (!res.ok) {
-    throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      throw new Error(`Ollama error: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    return data.message?.content ?? "";
+  } finally {
+    clearTimeout(timeout);
   }
+}
 
-  const data = await res.json();
-  return data.message?.content ?? "";
+function anthropicKey(): string | undefined {
+  return process.env.ANTHROPIC_API_KEY?.trim() || undefined;
+}
+
+function ollamaBase(): string {
+  const configured = process.env.OLLAMA_URL?.trim();
+  if (configured) return configured;
+  return process.env.NODE_ENV === "production" ? "" : "http://localhost:11434";
+}
+
+function llmTimeoutMs(): number {
+  const value = Number(process.env.LLM_TIMEOUT_MS || DEFAULT_LLM_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_LLM_TIMEOUT_MS;
 }
 
 /**

@@ -5,7 +5,7 @@ import { z } from "zod";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { callAgentLLM } from "@/lib/llm";
+import { callAgentLLM, llmChat } from "@/lib/llm";
 
 const TestSchema = z.object({ name: z.string(), value: z.number() });
 
@@ -20,7 +20,7 @@ function mockOllamaResponse(content: string) {
 describe("callAgentLLM", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Ensure no Gemini key so it uses Ollama path
+    delete process.env.ANTHROPIC_API_KEY;
     delete process.env.GEMINI_API_KEY;
   });
 
@@ -60,5 +60,40 @@ describe("callAgentLLM", () => {
     mockOllamaResponse(JSON.stringify({ name: 123, value: "wrong" }));
 
     await expect(callAgentLLM(TestSchema, "system", "user")).rejects.toThrow();
+  });
+
+  it("does not call Gemini even when a Gemini key is present", async () => {
+    process.env.GEMINI_API_KEY = "should-not-be-used";
+    mockFetch.mockResolvedValue({
+      ok: false,
+      text: async () => "ollama offline",
+      json: async () => ({}),
+    });
+
+    await expect(llmChat("system", "user")).rejects.toThrow(/Ollama/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/api/chat");
+  });
+
+  it("falls back to Anthropic when Ollama fails and Anthropic is configured", async () => {
+    process.env.ANTHROPIC_API_KEY = "anthropic-key";
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: false,
+        text: async () => "ollama offline",
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => "",
+        json: async () => ({ content: [{ text: "{\"name\":\"fallback\",\"value\":5}" }] }),
+      });
+
+    const result = await callAgentLLM(TestSchema, "system", "user");
+
+    expect(result).toEqual({ name: "fallback", value: 5 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/api/chat");
+    expect(String(mockFetch.mock.calls[1][0])).toBe("https://api.anthropic.com/v1/messages");
   });
 });
