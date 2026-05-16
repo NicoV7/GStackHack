@@ -250,6 +250,10 @@ function handleSSEEvent(event) {
           const targetNode = GraphState.nodes.get(targetId);
           if (targetNode) targetNode.status = "active";
         }
+        // Also set on root node if it has no lesson yet (first lesson becomes root's lesson)
+        if (GraphState.rootId && !GraphState.nodes.get(GraphState.rootId)?.lesson) {
+          GraphState.setLesson(GraphState.rootId, event.lesson);
+        }
         // Render if this is for the active node or no lesson displayed yet
         if (targetId === GraphState.activeNodeId || !currentLesson) {
           currentLesson = event.lesson;
