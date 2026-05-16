@@ -370,11 +370,117 @@ function addMessage(role, text) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+// --- SSE Pipeline Consumer ---
+const agentFeed = document.querySelector("#agentFeed");
+let pipelineRunning = false;
+
+function addAgentEvent(icon, text, status) {
+  if (!agentFeed) return;
+  const el = document.createElement("div");
+  el.className = "agent-event";
+  el.innerHTML = `
+    <span class="agent-icon ${icon}">${icon === "search" ? "\u{1F50D}" : icon === "lesson" ? "\u{1F4DD}" : icon === "graph" ? "\u{1F578}\uFE0F" : "\u2139\uFE0F"}</span>
+    <span class="agent-text">${text}</span>
+    <span class="agent-status ${status}">${status === "done" ? "\u2713" : status === "working" ? "\u21BB" : ""}</span>
+  `;
+  agentFeed.appendChild(el);
+  agentFeed.scrollTop = agentFeed.scrollHeight;
+}
+
+function clearAgentFeed() {
+  if (agentFeed) agentFeed.innerHTML = "";
+}
+
+function handleSSEEvent(event) {
+  switch (event.type) {
+    case "browser.searching":
+      addAgentEvent("search", `Searching "${event.query}"`, "working");
+      break;
+    case "browser.source_found":
+      addAgentEvent("search", `Found: ${event.source.title}`, "done");
+      break;
+    case "lesson.writing":
+      addAgentEvent("lesson", `Writing lesson: ${event.topic}`, "working");
+      break;
+    case "lesson.visualization":
+      addAgentEvent("lesson", "Generating visualization", "done");
+      break;
+    case "lesson.quiz_generated":
+      addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} quiz questions`, "done");
+      // Store the AI-generated lesson for later use
+      if (event.lesson) {
+        window._aiLesson = event.lesson;
+      }
+      break;
+    case "graph.node_added":
+      addAgentEvent("graph", `Added node: ${event.node.topic}`, "done");
+      break;
+    case "graph.edge_added":
+      addAgentEvent("graph", `Connected: ${event.edge.source} \u2192 ${event.edge.target}`, "done");
+      break;
+    case "graph.prerequisite_suggested":
+      addAgentEvent("graph", `Prerequisite suggested: ${event.node.topic}`, "working");
+      break;
+    case "pipeline.complete":
+      addAgentEvent("info", "Pipeline complete", "done");
+      pipelineRunning = false;
+      break;
+    case "pipeline.error":
+      addAgentEvent("info", `Error: ${event.error}`, "error");
+      pipelineRunning = false;
+      break;
+  }
+}
+
+async function startPipeline(topic) {
+  if (pipelineRunning) return;
+  pipelineRunning = true;
+  clearAgentFeed();
+  addAgentEvent("info", `Starting pipeline for "${topic}"`, "working");
+
+  try {
+    const res = await fetch("/api/learn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            handleSSEEvent(event);
+          } catch (e) {
+            // Skip malformed events
+          }
+        }
+      }
+    }
+  } catch (err) {
+    addAgentEvent("info", "Connection failed \u2014 using local data", "error");
+  }
+  pipelineRunning = false;
+}
+
 subjectForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const subject = normalizeSubject(subjectInput.value);
   subjectInput.value = titleCase(subject);
   createLessonPath(subject);
+  // Also start the AI pipeline in parallel
+  startPipeline(subject);
+  // Switch to chat/agent view to show pipeline activity
+  showView("chat");
 });
 
 chatForm.addEventListener("submit", (event) => {
