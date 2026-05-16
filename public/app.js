@@ -37,24 +37,26 @@ document.addEventListener("keydown", (e) => {
 // --- Bento Drawer ---
 const bentoDrawer = document.querySelector("#bentoDrawer");
 const bentoHandle = document.querySelector("#bentoHandle");
+const agentTrigger = document.querySelector("#agentTrigger");
+const agentTriggerCount = document.querySelector("#agentTriggerCount");
 
 function openBentoDrawer() {
   bentoDrawer.classList.add("open");
   bentoHandle.setAttribute("aria-expanded", "true");
-  const h = bentoDrawer.getBoundingClientRect().height;
-  document.documentElement.style.setProperty("--bento-open-offset", `${h}px`);
+  agentTrigger?.classList.add("hidden");
 }
 
 function closeBentoDrawer() {
   bentoDrawer.classList.remove("open");
   bentoHandle.setAttribute("aria-expanded", "false");
-  document.documentElement.style.setProperty("--bento-open-offset", "0px");
+  agentTrigger?.classList.remove("hidden");
 }
 
 function toggleBentoDrawer() {
   bentoDrawer.classList.contains("open") ? closeBentoDrawer() : openBentoDrawer();
 }
 
+agentTrigger?.addEventListener("click", toggleBentoDrawer);
 bentoHandle?.addEventListener("click", toggleBentoDrawer);
 bentoHandle?.addEventListener("keydown", (e) => {
   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleBentoDrawer(); }
@@ -151,10 +153,14 @@ function addAgentEvent(icon, text, status) {
   `;
   agentFeed.appendChild(el);
   agentFeed.scrollTop = agentFeed.scrollHeight;
+  // Keep trigger count badge in sync
+  const count = agentFeed.querySelectorAll(".agent-event").length;
+  if (agentTriggerCount) agentTriggerCount.textContent = count;
 }
 
 function clearAgentFeed() {
   if (agentFeed) agentFeed.innerHTML = "";
+  if (agentTriggerCount) agentTriggerCount.textContent = "0";
 }
 
 // --- Lesson Panel ---

@@ -134,23 +134,23 @@
             </div>
           </div>
 
-          <!-- Coach input bar (floats at bottom of graph) -->
-          <div class="graph-coach-bar" aria-label="AI coach">
-            <div class="graph-coach-log" id="chatLog" role="log" aria-live="polite"></div>
-            <form class="graph-coach-form" id="chatForm">
-              <span class="coach-status-dot" aria-hidden="true"></span>
-              <input
-                id="chatInput"
-                type="text"
-                autocomplete="off"
-                placeholder="Ask the AI coach for a path, review, or branch..."
-                aria-label="Chat with AI coach"
-              />
-              <button type="submit">Ask</button>
-            </form>
-          </div>
-
         </section>
+      </div>
+
+      <!-- ── Coach Bar (fixed bottom, above bento) ─────────────────── -->
+      <div class="graph-coach-bar" aria-label="AI coach">
+        <div class="graph-coach-log" id="chatLog" role="log" aria-live="polite"></div>
+        <form class="graph-coach-form" id="chatForm">
+          <span class="coach-status-dot" aria-hidden="true"></span>
+          <input
+            id="chatInput"
+            type="text"
+            autocomplete="off"
+            placeholder="Ask the AI coach for a path, review, or branch..."
+            aria-label="Chat with AI coach"
+          />
+          <button type="submit">Ask</button>
+        </form>
       </div>
 
       <!-- ── Lesson Drawer (slide from right) ───────────────────── -->
@@ -175,6 +175,13 @@
           </div>
         </div>
       </div>
+
+      <!-- ── Agent Activity Trigger (fixed bottom-right) ─────────── -->
+      <button class="agent-trigger" id="agentTrigger" aria-label="Toggle agent activity">
+        <span class="agent-trigger-dot" aria-hidden="true"></span>
+        <span>Activity</span>
+        <span class="agent-trigger-count" id="agentTriggerCount">0</span>
+      </button>
 
       <!-- ── Bento Drawer: agent feed only ──────────────────────── -->
       <div

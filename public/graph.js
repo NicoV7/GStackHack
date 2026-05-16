@@ -52,13 +52,19 @@ const GraphState = {
     if (!canvas) {
       canvas = document.createElement("div");
       canvas.className = "graph-canvas";
-      // Move existing children (svg + nodes div) into the canvas
-      while (this.container.firstChild) canvas.appendChild(this.container.firstChild);
+      // Only move the graph primitives (svg + nodes div) into the pannable canvas.
+      // Overlays (gallery tab, empty state) stay as direct children of graph-area
+      // so they are never panned or scaled with the graph.
+      const panTargets = [
+        this.container.querySelector("#graphEdges"),
+        this.container.querySelector("#graphNodes"),
+      ].filter(Boolean);
+      panTargets.forEach((el) => canvas.appendChild(el));
       this.container.appendChild(canvas);
     }
     this.canvas = canvas;
     // Re-grab references (they moved into canvas)
-    this.svgEdges     = canvas.querySelector("#graphEdges");
+    this.svgEdges       = canvas.querySelector("#graphEdges");
     this.nodesContainer = canvas.querySelector("#graphNodes");
     this._applyPan(0, 0, false);
   },

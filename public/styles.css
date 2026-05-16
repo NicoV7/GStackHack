@@ -47,7 +47,6 @@
   --z-coach:   22;
   --z-grain:   50;
 
-  --bento-open-offset: 0px;
   --bento-height: clamp(240px, 38vh, 400px);
   --bento-handle-h: 46px;
   --lesson-w: clamp(320px, 38vw, 500px);
@@ -637,7 +636,7 @@ body {
   overflow: hidden;
   /* top: space for floating nav (14px padding + 48px pill + 14px padding) */
   padding-top: 76px;
-  padding-bottom: var(--bento-handle-h);
+  padding-bottom: 0;
   opacity: 0;
   pointer-events: none;
   transition: opacity 300ms var(--ease-out) 200ms;
@@ -1137,13 +1136,12 @@ body {
   flex-direction: column;
 
   background: var(--bg-panel);
-  /* Orange top accent line so it clearly separates from the graph */
   border-top: 1px solid rgba(217, 119, 6, 0.35);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
 
-  /* Collapsed: only handle visible */
-  transform: translateY(calc(100% - var(--bento-handle-h)));
+  /* Hidden by default — slides up only when opened */
+  transform: translateY(100%);
   transition: transform 360ms var(--spring);
 }
 
@@ -1497,12 +1495,13 @@ body {
 ═══════════════════════════════════════════════════════════════════ */
 
 .graph-coach-bar {
-  position: absolute;
-  bottom: 16px;
+  position: fixed;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%) translateY(8px);
   width: min(580px, calc(100% - 40px));
-  z-index: calc(var(--z-graph) + 3);
+  /* Sits above the graph but below the bento drawer */
+  z-index: calc(var(--z-drawer) - 1);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1596,6 +1595,85 @@ body {
 
 .graph-coach-form button[type="submit"]:hover { background: var(--accent-hi); }
 .graph-coach-form button[type="submit"]:active { transform: scale(0.95); }
+
+/* ─── Agent Activity Trigger (floating bottom-right pill) ────────── */
+.agent-trigger {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: calc(var(--z-drawer) - 1);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line-bright);
+  background: rgba(8, 8, 7, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ink-2);
+  font-family: 'Geist', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+
+  /* Hidden until app state */
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition:
+    opacity 300ms var(--ease-out) 500ms,
+    transform 360ms var(--spring) 500ms,
+    border-color 180ms var(--ease-snappy),
+    color 180ms var(--ease-snappy);
+}
+
+[data-app-state="app"] .agent-trigger {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.agent-trigger:hover {
+  border-color: rgba(217, 119, 6, 0.45);
+  color: var(--ink);
+}
+
+.agent-trigger:active { transform: scale(0.95); }
+
+.agent-trigger-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+  animation: statusPulse 2.4s var(--ease-out) infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.agent-trigger-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent-hi);
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Trigger hidden when bento is open (toggled via JS class) */
+.agent-trigger.hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
 
 /* ─── Coach status dot (shared) ─────────────────────────────────── */
 .coach-status-dot {
