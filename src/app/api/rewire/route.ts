@@ -1,6 +1,6 @@
 import { createSSEStream, sseResponse } from "@/lib/sse";
 import { rewireAgent } from "@/lib/agents/rewire-agent";
-import { putConceptMemory } from "@/lib/gbrain";
+import { addWeakArea, putConceptMemory, safeSessionId } from "@/lib/gbrain";
 import type { Question, SSEEvent } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     existingNodes: string[];
     sessionId?: string;
   };
-  const sessionId = body.sessionId || "anonymous";
+  const sessionId = safeSessionId(body.sessionId || "anonymous");
 
   const { readable, emit, close } = createSSEStream();
 
@@ -30,10 +30,30 @@ export async function POST(req: Request) {
 
       // Write misconception to GBrain
       if (prerequisiteTopic) {
-        putConceptMemory(sessionId, body.currentTopic,
-          `Misconception detected: answered "${body.wrongAnswer}" for question about ${body.currentTopic}. Prerequisite needed: ${prerequisiteTopic}`
-        ).catch(() => {});
-        emit({ type: "gbrain.memory_written", topic: body.currentTopic });
+        const writes = [
+          () => putConceptMemory(
+            sessionId,
+            body.currentTopic,
+            `Misconception detected: answered "${body.wrongAnswer}" for question about ${body.currentTopic}. Prerequisite needed: ${prerequisiteTopic}`
+          ),
+          () => putConceptMemory(
+            sessionId,
+            prerequisiteTopic,
+            `Suggested as a prerequisite for ${body.currentTopic} after the learner answered "${body.wrongAnswer}".`
+          ),
+          () => addWeakArea(sessionId, prerequisiteTopic),
+        ];
+        let allWritten = true;
+        for (const writeMemory of writes) {
+          try {
+            allWritten = (await writeMemory()) && allWritten;
+          } catch {
+            allWritten = false;
+          }
+        }
+        emit(allWritten
+          ? { type: "gbrain.memory_written", topic: body.currentTopic }
+          : { type: "gbrain.offline", reason: "misconception_write_failed" });
       }
 
       emit({ type: "pipeline.complete", totalMs: 0 });

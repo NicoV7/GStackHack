@@ -29,6 +29,20 @@ export const CACHED_SOURCES: Record<string, Source[]> = {
       relevance: 0.8,
     },
   ],
+  limits: [
+    {
+      title: "Limits - Paul's Online Notes",
+      url: "https://tutorial.math.lamar.edu/classes/calci/limitsintro.aspx",
+      excerpt: "A limit describes what value a function approaches as the input gets close to a point. This idea lets derivatives talk about instant change instead of average change.",
+      relevance: 0.94,
+    },
+    {
+      title: "Limits and Derivatives - OpenStax",
+      url: "https://openstax.org/books/calculus-volume-1/pages/2-introduction",
+      excerpt: "Limits are the foundation for continuity and derivatives. The derivative is built from the limit of average rates of change over smaller and smaller intervals.",
+      relevance: 0.9,
+    },
+  ],
   vectors: [
     {
       title: "Vectors - Khan Academy",
@@ -82,6 +96,25 @@ export const CACHED_LESSONS: Record<string, Lesson> = {
       },
     ],
     sources: CACHED_SOURCES.derivatives,
+  },
+  limits: {
+    title: "Limits: The Zoom-In Idea",
+    content:
+      "A limit asks where a function is heading as x gets close to a value, even before you care about the exact value at that point.\n\nFor derivatives, this is the missing step: average slope becomes instant slope by shrinking the interval until it is almost zero.",
+    visualization: "A secant line between two nearby points on y=x² shrinks into one tangent line as the second point slides closer.",
+    quiz: [
+      {
+        id: "limits-q1",
+        text: "Why do limits matter for derivatives?",
+        options: [
+          { label: "They turn average change into instant change", correct: true },
+          { label: "They measure total area under a curve", correct: false },
+          { label: "They only find maximum values", correct: false },
+        ],
+        prerequisiteTopic: "Average Rate of Change",
+      },
+    ],
+    sources: CACHED_SOURCES.limits,
   },
 };
 

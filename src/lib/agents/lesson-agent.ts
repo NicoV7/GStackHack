@@ -9,7 +9,8 @@ type EmitFn = (event: SSEEvent) => void;
 export async function lessonAgent(
   topic: string,
   sources: Source[],
-  emit: EmitFn
+  emit: EmitFn,
+  nodeId?: string
 ): Promise<Lesson> {
   emit({ type: "lesson.writing", topic });
 
@@ -29,23 +30,39 @@ export async function lessonAgent(
     if (lesson.visualization) {
       emit({ type: "lesson.visualization", description: lesson.visualization });
     }
-    emit({ type: "lesson.quiz_generated", lesson });
+    emit({ type: "lesson.quiz_generated", lesson, nodeId });
 
     return lesson;
   } catch {
-    return fallbackToCache(topic, sources, emit);
+    return fallbackToCache(topic, sources, emit, nodeId);
   }
 }
 
-function fallbackToCache(topic: string, sources: Source[], emit: EmitFn): Lesson {
+function fallbackToCache(topic: string, sources: Source[], emit: EmitFn, nodeId?: string): Lesson {
   const normalized = topic.trim().toLowerCase();
-  const cached = CACHED_LESSONS[normalized] ?? CACHED_LESSONS.derivatives;
-  const lesson: Lesson = { ...cached, sources };
+  const cached = CACHED_LESSONS[normalized];
+
+  const lesson: Lesson = cached
+    ? { ...cached, sources }
+    : {
+        title: topic,
+        content: `An overview of ${topic}. ${sources[0]?.excerpt || "Explore this topic through the knowledge graph."}`,
+        quiz: [{
+          id: `q-${normalized.replace(/[^a-z0-9]+/g, "-")}`,
+          text: `What is the key idea behind ${topic}?`,
+          options: [
+            { label: "Understanding the core principle", correct: true },
+            { label: "Memorizing formulas", correct: false },
+            { label: "Skipping to applications", correct: false },
+          ],
+        }],
+        sources,
+      };
 
   if (lesson.visualization) {
     emit({ type: "lesson.visualization", description: lesson.visualization });
   }
-  emit({ type: "lesson.quiz_generated", lesson });
+  emit({ type: "lesson.quiz_generated", lesson, nodeId });
 
   return lesson;
 }

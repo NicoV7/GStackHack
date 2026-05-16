@@ -46,8 +46,12 @@ export async function graphAgent(
 
 function fallbackToCache(topic: string, emit: EmitFn): GraphAgentResult {
   const normalized = topic.trim().toLowerCase();
-  const nodes = CACHED_GRAPH_NODES[normalized] ?? CACHED_GRAPH_NODES.derivatives;
-  const edges = CACHED_GRAPH_EDGES[normalized] ?? CACHED_GRAPH_EDGES.derivatives;
+  const nodes = CACHED_GRAPH_NODES[normalized];
+  const edges = CACHED_GRAPH_EDGES[normalized];
+
+  if (!nodes || !edges) {
+    return { newNodes: [], newEdges: [] };
+  }
 
   for (const node of nodes) {
     emit({ type: "graph.node_added", node });

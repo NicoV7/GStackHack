@@ -46,6 +46,7 @@ GraphState.init(
       renderLessonPanel(node.lesson, node.topic);
     } else {
       renderLessonPlaceholder(node);
+      startSubPipeline(node.topic, node.id);
     }
     renderGallery();
   }
@@ -131,7 +132,7 @@ function handleQuizAnswer(btn, lesson) {
   });
 
   if (isCorrect) {
-    if (feedback) feedback.textContent = "Correct! Node marked as learned.";
+    if (feedback) feedback.textContent = "Correct. Node marked as learned.";
     if (GraphState.activeNodeId) {
       GraphState.markCompleted(GraphState.activeNodeId);
     }
@@ -224,6 +225,15 @@ function handleSSEEvent(event) {
       addAgentEvent("search", `Found: ${event.source.title}`, "done");
       updateSourceStats(1);
       break;
+    case "decomposition.started":
+      addAgentEvent("graph", `Planning lesson branches for ${event.topic || currentTopic}`, "working");
+      break;
+    case "decomposition.plan_created":
+      addAgentEvent("graph", `Branch planned: ${event.plan.subTopic}`, "done");
+      break;
+    case "decomposition.complete":
+      addAgentEvent("graph", `${event.count} branches planned`, "done");
+      break;
     case "lesson.writing":
       addAgentEvent("lesson", `Writing lesson: ${event.topic || currentTopic}`, "working");
       break;
@@ -233,13 +243,26 @@ function handleSSEEvent(event) {
     case "lesson.quiz_generated":
       addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} questions`, "done");
       if (event.lesson) {
-        currentLesson = event.lesson;
-        // Store lesson on the active graph node
-        if (GraphState.activeNodeId) {
-          GraphState.setLesson(GraphState.activeNodeId, event.lesson);
+        // Route lesson to the correct node (by nodeId from backend, or fallback to active)
+        const targetId = event.nodeId || GraphState.activeNodeId;
+        if (targetId) {
+          GraphState.setLesson(targetId, event.lesson);
+          const targetNode = GraphState.nodes.get(targetId);
+          if (targetNode) targetNode.status = "active";
         }
-        renderLessonPanel(event.lesson, currentTopic);
+        // Render if this is for the active node or no lesson displayed yet
+        if (targetId === GraphState.activeNodeId || !currentLesson) {
+          currentLesson = event.lesson;
+          renderLessonPanel(event.lesson, event.lesson.title || currentTopic);
+        }
+        renderGallery();
       }
+      break;
+    case "visualization.started":
+      addAgentEvent("lesson", `Designing visual for ${event.lessonTitle || currentTopic}`, "working");
+      break;
+    case "visualization.complete":
+      addAgentEvent("lesson", "Visual card generated", "done");
       break;
     case "graph.node_added":
       if (graphEmpty) graphEmpty.classList.add("hidden");
@@ -256,6 +279,15 @@ function handleSSEEvent(event) {
       addAgentEvent("graph", `Prerequisite: ${event.node.topic} — ${event.reason || ""}`, "done");
       updateStats();
       renderGallery();
+      break;
+    case "gbrain.context_loaded":
+      addAgentEvent("info", `GBrain memory loaded (${event.count || 0} notes)`, "done");
+      break;
+    case "gbrain.memory_written":
+      addAgentEvent("info", `GBrain memory saved: ${event.topic || "session"}`, "done");
+      break;
+    case "gbrain.offline":
+      addAgentEvent("info", "GBrain offline — using cached/local memory", "error");
       break;
     case "pipeline.complete":
       addAgentEvent("info", `Pipeline complete (${event.totalMs}ms)`, "done");
@@ -318,6 +350,46 @@ async function startPipeline(topic) {
   } catch {
     addAgentEvent("info", "Connection failed — using fallback data", "error");
     useFallbackData(topic);
+  }
+  pipelineRunning = false;
+}
+
+async function startSubPipeline(topic, nodeId) {
+  if (pipelineRunning) return;
+  pipelineRunning = true;
+  currentTopic = topic;
+
+  if (pipelineStatus) pipelineStatus.textContent = "Loading...";
+  addAgentEvent("info", `Loading lesson for "${topic}"`, "working");
+
+  try {
+    const res = await fetch("/api/learn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic, sessionId: getSessionId(), nodeId, mode: "single" }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            handleSSEEvent(event);
+          } catch { /* skip */ }
+        }
+      }
+    }
+  } catch {
+    addAgentEvent("info", "Failed to load lesson", "error");
   }
   pipelineRunning = false;
 }
@@ -410,8 +482,12 @@ function renderGallery() {
       const node = GraphState.nodes.get(item.dataset.nodeId);
       if (!node) return;
       GraphState.setActive(node.id);
-      if (node.lesson) renderLessonPanel(node.lesson, node.topic);
-      else renderLessonPlaceholder(node);
+      if (node.lesson) {
+        renderLessonPanel(node.lesson, node.topic);
+      } else {
+        renderLessonPlaceholder(node);
+        startSubPipeline(node.topic, node.id);
+      }
       renderGallery();
     });
   });
