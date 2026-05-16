@@ -1,10 +1,12 @@
 /**
- * Unified LLM provider — uses Gemini (cloud) or Ollama (local) based on env vars.
- * Priority: GEMINI_API_KEY > OLLAMA_URL > throw (agents catch and use demo-cache).
+ * Unified LLM provider — priority: ANTHROPIC_API_KEY > GEMINI_API_KEY > OLLAMA.
+ * Agents catch errors and use demo-cache fallbacks.
  */
 
 import { z } from "zod";
 
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const OLLAMA_BASE = process.env.OLLAMA_URL || "http://localhost:11434";
@@ -14,10 +16,38 @@ export async function llmChat(
   system: string,
   userMessage: string
 ): Promise<string> {
+  if (ANTHROPIC_KEY) {
+    return anthropicChat(system, userMessage);
+  }
   if (GEMINI_KEY) {
     return geminiChat(system, userMessage);
   }
   return ollamaChat(system, userMessage);
+}
+
+async function anthropicChat(system: string, userMessage: string): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1024,
+      system,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Anthropic error: ${res.status} ${errorText}`);
+  }
+
+  const data = await res.json();
+  return data.content?.[0]?.text ?? "";
 }
 
 async function geminiChat(system: string, userMessage: string): Promise<string> {
