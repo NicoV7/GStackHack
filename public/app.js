@@ -14,6 +14,16 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatLog = document.querySelector("#chatLog");
 
+// --- Session Identity ---
+function getSessionId() {
+  let id = localStorage.getItem('lg_session_id');
+  if (!id) {
+    id = 'session-' + crypto.randomUUID().slice(0, 8);
+    localStorage.setItem('lg_session_id', id);
+  }
+  return id;
+}
+
 // --- State ---
 let pipelineRunning = false;
 let currentTopic = "";
@@ -148,6 +158,7 @@ async function triggerRewire(question, wrongAnswer) {
         question,
         currentTopic,
         existingNodes: Array.from(GraphState.nodes.keys()),
+        sessionId: getSessionId(),
       }),
     });
 
@@ -282,7 +293,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic }),
+      body: JSON.stringify({ topic, sessionId: getSessionId() }),
     });
 
     const reader = res.body.getReader();

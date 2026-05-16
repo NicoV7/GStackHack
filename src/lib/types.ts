@@ -56,6 +56,8 @@ export type SSEEventType =
   | "graph.prerequisite_suggested"
   | "visualization.started"
   | "visualization.complete"
+  | "gbrain.context_loaded"
+  | "gbrain.memory_written"
   | "pipeline.complete"
   | "pipeline.error";
 

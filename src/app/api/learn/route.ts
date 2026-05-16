@@ -39,6 +39,9 @@ export async function POST(req: Request) {
 
       // ① Read learner profile
       const profile = await getProfile(sessionId);
+      if (profile.weakAreas.length > 0 || profile.completedTopics.length > 0) {
+        emit({ type: "gbrain.context_loaded", sessionId });
+      }
 
       // ② Browser Agent
       const sources = await browserAgent(topic, emit);

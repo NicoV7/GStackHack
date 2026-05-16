@@ -59,6 +59,13 @@ export async function putLesson(sessionId: string, topic: string, subId: string,
   } catch { clientP = null; }
 }
 
+export async function putConceptMemory(sessionId: string, topic: string, body: string): Promise<void> {
+  try {
+    const sid = safeSessionId(sessionId);
+    await call("put_page", { path: `users/${sid}/concepts/${slug(topic)}`, type: "concept", body });
+  } catch { clientP = null; }
+}
+
 export async function queryContext(sessionId: string, topic: string): Promise<string[]> {
   try {
     const sid = safeSessionId(sessionId);
