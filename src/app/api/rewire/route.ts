@@ -30,18 +30,19 @@ export async function POST(req: Request) {
 
       // Write misconception to GBrain
       if (prerequisiteTopic) {
+        const prerequisite: string = prerequisiteTopic;
         const writes = [
           () => putConceptMemory(
             sessionId,
             body.currentTopic,
-            `Misconception detected: answered "${body.wrongAnswer}" for question about ${body.currentTopic}. Prerequisite needed: ${prerequisiteTopic}`
+            `Misconception detected: answered "${body.wrongAnswer}" for question about ${body.currentTopic}. Prerequisite needed: ${prerequisite}`
           ),
           () => putConceptMemory(
             sessionId,
-            prerequisiteTopic,
+            prerequisite,
             `Suggested as a prerequisite for ${body.currentTopic} after the learner answered "${body.wrongAnswer}".`
           ),
-          () => addWeakArea(sessionId, prerequisiteTopic),
+          () => addWeakArea(sessionId, prerequisite),
         ];
         let allWritten = true;
         for (const writeMemory of writes) {
