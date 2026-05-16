@@ -75,3 +75,16 @@ export type RewireOutput = z.infer<typeof RewireOutputSchema>;
 export type VisualizationOutput = z.infer<typeof VisualizationOutputSchema>;
 export type LessonPlan = z.infer<typeof LessonPlanSchema>;
 export type DecompositionOutput = z.infer<typeof DecompositionOutputSchema>;
+
+export const DeepDiveSectionSchema = z.object({
+  type: z.enum(["explanation", "mermaid", "comparisonTable", "workedExample", "quiz"]),
+  content: z.string(),
+});
+
+export const DeepDiveSchema = z.object({
+  title: z.string(),
+  sections: z.array(DeepDiveSectionSchema).min(2).max(6),
+});
+
+export type DeepDiveSection = z.infer<typeof DeepDiveSectionSchema>;
+export type DeepDiveOutput = z.infer<typeof DeepDiveSchema>;
