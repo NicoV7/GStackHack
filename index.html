@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GBrain Lessons</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" aria-label="GBrain visual lesson app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">GBrain Learn</p>
+          <h1>Memory-first lessons</h1>
+        </div>
+        <button class="icon-button" id="memoryButton" aria-label="Open memory pulse">
+          <span aria-hidden="true">M</span>
+        </button>
+      </header>
+
+      <section class="search-panel" aria-label="AI lesson search">
+        <label for="subjectInput">Create a path</label>
+        <form class="subject-form" id="subjectForm">
+          <input
+            id="subjectInput"
+            name="subject"
+            type="search"
+            autocomplete="off"
+            placeholder="Try chain rule, vectors, probability..."
+          />
+          <button type="submit">Build</button>
+        </form>
+      </section>
+
+      <nav class="segmented-tabs" aria-label="Views">
+        <button class="tab active" data-view="learn">Learn</button>
+        <button class="tab" data-view="map">Graph</button>
+        <button class="tab" data-view="gallery">Gallery</button>
+        <button class="tab" data-view="chat">Chat</button>
+      </nav>
+
+      <section class="view active" id="learnView" aria-label="Current lesson">
+        <div class="pulse" id="progressPulse">You are building a calculus path.</div>
+        <article class="lesson-card" id="lessonCard"></article>
+      </section>
+
+      <section class="view" id="mapView" aria-label="Lesson graph">
+        <div class="section-heading">
+          <h2>Branching lesson graph</h2>
+          <p id="mapSummary">AI creates paths from what you know to what is next.</p>
+        </div>
+        <div class="graph-wrap">
+          <svg id="lessonGraph" viewBox="0 0 360 390" role="img" aria-label="Generated lesson graph"></svg>
+        </div>
+      </section>
+
+      <section class="view" id="galleryView" aria-label="Lesson gallery">
+        <div class="section-heading">
+          <h2>Lesson gallery</h2>
+          <p>Every generated card is saved as a reusable micro-unit.</p>
+        </div>
+        <div class="gallery-grid" id="galleryGrid"></div>
+      </section>
+
+      <section class="view" id="chatView" aria-label="AI coach chat">
+        <div class="chat-log" id="chatLog"></div>
+        <form class="chat-form" id="chatForm">
+          <input
+            id="chatInput"
+            type="text"
+            autocomplete="off"
+            placeholder="Ask for a lesson, review, or new branch..."
+          />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <aside class="memory-drawer" id="memoryDrawer" aria-hidden="true">
+        <div class="drawer-handle"></div>
+        <h2>Memory pulse</h2>
+        <p id="memoryCopy">
+          GBrain saw you finish function composition. Next it is testing whether
+          the chain rule visual actually landed.
+        </p>
+        <button id="closeMemory">Close</button>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
