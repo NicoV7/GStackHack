@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GStackHack - Learning Search Engine Wireframe</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; height: 100vh; overflow: hidden; }
+
+/* Layout: search top, then split graph + panel */
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Search bar area */
+.search-area {
+  padding: 20px 40px;
+  background: #12121a;
+  border-bottom: 1px solid #2a2a3a;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.logo { font-size: 20px; font-weight: 700; color: #7c5cfc; }
+.search-bar {
+  flex: 1;
+  max-width: 600px;
+  padding: 12px 20px;
+  border-radius: 24px;
+  border: 1px solid #3a3a4a;
+  background: #1a1a2a;
+  color: #e0e0e0;
+  font-size: 16px;
+}
+.search-bar::placeholder { color: #666; }
+
+/* Main content split */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Graph area - center */
+.graph-area {
+  flex: 1;
+  position: relative;
+  background: #0d0d14;
+  overflow: hidden;
+}
+
+/* Graph nodes */
+.node {
+  position: absolute;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1.5px solid;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.node.active { background: #7c5cfc22; border-color: #7c5cfc; color: #b8a5ff; box-shadow: 0 0 20px #7c5cfc33; }
+.node.completed { background: #22c55e22; border-color: #22c55e; color: #86efac; }
+.node.locked { background: #1a1a2a; border-color: #3a3a4a; color: #666; }
+.node.prereq { background: #f5920022; border-color: #f59200; color: #fbbf24; animation: pulse 2s infinite; }
+
+@keyframes pulse { 0%,100% { box-shadow: 0 0 5px #f5920033; } 50% { box-shadow: 0 0 20px #f5920055; } }
+
+/* Edges (SVG lines) */
+.edges { position: absolute; inset: 0; pointer-events: none; }
+.edges line { stroke: #3a3a4a; stroke-width: 1.5; }
+.edges line.active { stroke: #7c5cfc; stroke-width: 2; }
+
+/* Right panel - agent activity + lesson */
+.right-panel {
+  width: 380px;
+  background: #12121a;
+  border-left: 1px solid #2a2a3a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Agent activity feed */
+.agent-feed {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  border-bottom: 1px solid #2a2a3a;
+}
+.agent-feed h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 12px; }
+.agent-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #1a1a2a;
+  font-size: 13px;
+}
+.agent-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.agent-icon.browser { background: #3b82f622; color: #60a5fa; }
+.agent-icon.lesson { background: #22c55e22; color: #86efac; }
+.agent-icon.graph { background: #7c5cfc22; color: #b8a5ff; }
+.agent-status { color: #22c55e; font-size: 11px; }
+.agent-status.working { color: #f59200; }
+
+/* Lesson panel (bottom right) */
+.lesson-panel {
+  height: 240px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.lesson-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.lesson-content { font-size: 13px; line-height: 1.6; color: #aaa; }
+.quiz-question {
+  margin-top: 12px;
+  padding: 12px;
+  background: #1a1a2a;
+  border-radius: 8px;
+  border: 1px solid #3a3a4a;
+}
+.quiz-question p { font-size: 13px; margin-bottom: 8px; }
+.quiz-option {
+  padding: 8px 12px;
+  margin: 4px 0;
+  border-radius: 6px;
+  border: 1px solid #3a3a4a;
+  font-size: 12px;
+  cursor: pointer;
+}
+.quiz-option:hover { border-color: #7c5cfc; }
+.quiz-option.wrong { border-color: #ef4444; background: #ef444422; }
+
+/* Status bar */
+.status-bar {
+  padding: 8px 16px;
+  background: #0a0a0f;
+  border-top: 1px solid #2a2a3a;
+  font-size: 11px;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Search Area -->
+  <div class="search-area">
+    <div class="logo">LearnGraph</div>
+    <input class="search-bar" type="text" value="derivatives" placeholder="What do you want to learn?">
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Graph Visualization -->
+    <div class="graph-area">
+      <!-- SVG Edges -->
+      <svg class="edges" width="100%" height="100%">
+        <line x1="350" y1="200" x2="200" y2="320" class="active"/>
+        <line x1="350" y1="200" x2="500" y2="320"/>
+        <line x1="350" y1="200" x2="350" y2="80"/>
+        <line x1="200" y1="320" x2="100" y2="430"/>
+        <line x1="200" y1="320" x2="300" y2="430"/>
+        <line x1="500" y1="320" x2="450" y2="430"/>
+        <line x1="500" y1="320" x2="600" y2="430"/>
+      </svg>
+
+      <!-- Nodes -->
+      <!-- Comment: Central node - current topic being studied -->
+      <div class="node active" style="left: 300px; top: 180px;">Derivatives</div>
+      
+      <!-- Comment: Prerequisite that appeared after wrong quiz answer -->
+      <div class="node prereq" style="left: 290px; top: 60px;">Limits (suggested)</div>
+      
+      <!-- Comment: Completed branch -->
+      <div class="node completed" style="left: 140px; top: 300px;">Power Rule</div>
+      
+      <!-- Comment: Available branches -->
+      <div class="node locked" style="left: 440px; top: 300px;">Product Rule</div>
+      
+      <!-- Comment: Deeper nodes -->
+      <div class="node locked" style="left: 50px; top: 410px;">Higher Derivatives</div>
+      <div class="node locked" style="left: 240px; top: 410px;">Applications</div>
+      <div class="node locked" style="left: 390px; top: 410px;">Chain Rule</div>
+      <div class="node locked" style="left: 540px; top: 410px;">Quotient Rule</div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <!-- Agent Activity Feed -->
+      <div class="agent-feed">
+        <h3>Agent Activity</h3>
+        <div class="agent-event">
+          <div class="agent-icon browser">🔍</div>
+          <div>
+            <div>Searching "derivative rules calculus"</div>
+            <div class="agent-status">✓ 4 sources found</div>
+          </div>
+        </div>
+        <div class="agent-event">
+          <div class="agent-icon lesson">📝</div>
+          <div>
+            <div>Writing lesson: Power Rule</div>
+            <div class="agent-status">✓ complete</div>
+          </div>
+        </div>
+        <div class="agent-event">
+          <div class="agent-icon lesson">🎨</div>
+          <div>
+            <div>Generating visualization</div>
+            <div class="agent-status">✓ graph animation ready</div>
+          </div>
+        </div>
+        <div class="agent-event">
+          <div class="agent-icon graph">🕸️</div>
+          <div>
+            <div>Adding branches: Chain Rule, Quotient Rule</div>
+            <div class="agent-status working">⟳ expanding graph...</div>
+          </div>
+        </div>
+        <div class="agent-event">
+          <div class="agent-icon graph">⚠️</div>
+          <div>
+            <div>Quiz result: missing prerequisite detected</div>
+            <div class="agent-status" style="color: #f59200;">→ Added "Limits" node</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lesson Panel -->
+      <div class="lesson-panel">
+        <h3>Derivatives: Power Rule</h3>
+        <div class="lesson-content">
+          The power rule states: if f(x) = xⁿ, then f'(x) = nxⁿ⁻¹.<br><br>
+          Example: f(x) = x³ → f'(x) = 3x²
+        </div>
+        <div class="quiz-question">
+          <p><strong>Quick check:</strong> What is the derivative of f(x) = x⁵?</p>
+          <div class="quiz-option">A) 5x⁴</div>
+          <div class="quiz-option wrong">B) x⁴ ← incorrect — reviewing limits</div>
+          <div class="quiz-option">C) 5x⁵</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span>Graph: 8 nodes · 7 edges · 1 prerequisite suggested</span>
+    <span>Session: 4m 32s · Learning style: visual-interactive</span>
+  </div>
+</div>
+</body>
+</html>
