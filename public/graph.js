@@ -31,6 +31,15 @@ const GraphState = {
   addRootNode(id, topic, lesson) {
     this.rootId = id;
     this.activeNodeId = id;
+    const existing = this.nodes.get(id);
+    if (existing) {
+      existing.topic = topic;
+      existing.status = "active";
+      if (lesson && !existing.lesson) existing.lesson = lesson;
+      this.render();
+      return;
+    }
+
     this.nodes.set(id, {
       id,
       topic,
@@ -58,9 +67,22 @@ const GraphState = {
   },
 
   addEdge(edge) {
-    if (this.edges.some((e) => e.id === edge.id)) return;
+    if (this.edges.some((e) => e.id === edge.id || (e.source === edge.source && e.target === edge.target && e.type === edge.type))) return;
     this.edges.push(edge);
     this.render();
+  },
+
+  findByTopic(topic) {
+    const id = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return this.nodes.get(id) || Array.from(this.nodes.values()).find((node) => node.topic.toLowerCase() === topic.toLowerCase()) || null;
+  },
+
+  snapshotNodes() {
+    return Array.from(this.nodes.values()).map((node) => ({
+      id: node.id,
+      topic: node.topic,
+      hasLesson: Boolean(node.lesson),
+    }));
   },
 
   setActive(id) {

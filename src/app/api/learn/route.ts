@@ -5,6 +5,7 @@ import { graphAgent } from "@/lib/agents/graph-agent";
 import { decompositionAgent } from "@/lib/agents/decomposition-agent";
 import { visualizationAgent } from "@/lib/agents/visualization-agent";
 import { getProfile, putResearch, putLesson, queryContext, touchSession, safeSessionId } from "@/lib/gbrain";
+import { buildLessonPathway, buildRelatedNodeEdges, slugTopic, type ExistingLessonNode } from "@/lib/lesson-pathway";
 import type { Lesson, GraphNode, GraphEdge } from "@/lib/types";
 
 const responseCache = new Map<
@@ -21,14 +22,15 @@ function rememberedPrerequisite(context: string[]): string | null {
 }
 
 export async function POST(req: Request) {
-  const { topic, sessionId = "anonymous", nodeId, mode } = (await req.json()) as {
+  const { topic, sessionId = "anonymous", nodeId, mode, existingNodes = [] } = (await req.json()) as {
     topic: string;
     sessionId?: string;
     nodeId?: string;
     mode?: "full" | "single";
+    existingNodes?: ExistingLessonNode[];
   };
   const normalizedTopic = topic.trim().toLowerCase();
-  const topicId = normalizedTopic.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const topicId = slugTopic(normalizedTopic);
   const sid = safeSessionId(sessionId);
   const cacheKey = `${sid}:${normalizedTopic}`;
 
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
 
       const [profile, context] = await Promise.all([
         getProfile(sid),
-        queryContext(sid, topic),
+        queryContext(sid, [topic, ...existingNodes.map((node) => node.topic)].join(" ")),
       ]);
 
       if (context.length > 0 || profile.weakAreas.length > 0 || profile.completedTopics.length > 0) {
@@ -109,43 +111,76 @@ export async function POST(req: Request) {
       }
 
       // ④b Emit branch nodes so frontend has targets before lessons arrive
-      const planNodeIds: string[] = [];
-      for (const plan of effectivePlans) {
-        const planNodeId = plan.subTopic.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        planNodeIds.push(planNodeId);
-        emit({ type: "graph.node_added", node: { id: planNodeId, topic: plan.subTopic, status: "locked", position: { x: 0, y: 0 } } });
-        emit({ type: "graph.edge_added", edge: { id: `e-${topicId}-${planNodeId}`, source: topicId, target: planNodeId, type: "branch" } });
+      const pathway = buildLessonPathway(topicId, effectivePlans);
+      const planNodeIds = pathway.nodeIds;
+      const existingById = new Map(existingNodes.map((node) => [node.id, node]));
+      for (const node of pathway.nodes) {
+        emit({ type: "graph.node_added", node });
+      }
+      for (const edge of pathway.edges) {
+        emit({ type: "graph.edge_added", edge });
+      }
+      for (const edge of buildRelatedNodeEdges({
+        topicId,
+        topic,
+        pathwayNodes: pathway.nodes,
+        existingNodes,
+        gbrainContext: context,
+      })) {
+        emit({ type: "graph.edge_added", edge, source: "gbrain.related" });
       }
 
       // ⑤ Fan-out Lesson Agents (with nodeId routing)
+      const planContext = effectivePlans.map((plan, index) => ({
+        focus: plan.focus,
+        visualStyle: plan.visualStyle,
+        prerequisiteOf: plan.prerequisiteOf,
+        previousTopic: effectivePlans[index - 1]?.subTopic,
+        nextTopic: effectivePlans[index + 1]?.subTopic || plan.prerequisiteOf || undefined,
+      }));
       let lessonResults: PromiseSettledResult<Lesson>[];
       if (prerequisite) {
         const secondaryResults = await Promise.allSettled(
-          effectivePlans.slice(1).map((plan, i) => lessonAgent(plan.subTopic, sources, emit, planNodeIds[i + 1]))
+          effectivePlans.slice(1).map((plan, i) => {
+            const targetNode = existingById.get(planNodeIds[i + 1]);
+            if (targetNode?.hasLesson) return Promise.reject(new Error("lesson already exists"));
+            return lessonAgent(plan.subTopic, sources, emit, planNodeIds[i + 1], planContext[i + 1]);
+          })
         );
-        const primaryLesson = await lessonAgent(effectivePlans[0].subTopic, sources, emit, planNodeIds[0]);
-        lessonResults = [{ status: "fulfilled", value: primaryLesson }, ...secondaryResults];
+        const primaryNode = existingById.get(planNodeIds[0]);
+        const primaryResult: PromiseSettledResult<Lesson> = primaryNode?.hasLesson
+          ? { status: "rejected", reason: new Error("lesson already exists") }
+          : { status: "fulfilled", value: await lessonAgent(effectivePlans[0].subTopic, sources, emit, planNodeIds[0], planContext[0]) };
+        lessonResults = [primaryResult, ...secondaryResults];
       } else {
         lessonResults = await Promise.allSettled(
-          effectivePlans.map((plan, i) => lessonAgent(plan.subTopic, sources, emit, planNodeIds[i]))
+          effectivePlans.map((plan, i) => {
+            const targetNode = existingById.get(planNodeIds[i]);
+            if (targetNode?.hasLesson) return Promise.reject(new Error("lesson already exists"));
+            return lessonAgent(plan.subTopic, sources, emit, planNodeIds[i], planContext[i]);
+          })
         );
       }
       const lessons = lessonResults
         .filter((r): r is PromiseFulfilledResult<Lesson> => r.status === "fulfilled")
         .map((r) => r.value);
 
-      if (lessons.length === 0) throw new Error("All lesson agents failed");
+      if (lessons.length === 0 && planNodeIds.every((id) => !existingById.get(id)?.hasLesson)) {
+        throw new Error("All lesson agents failed");
+      }
 
       // ⑥ Parallel: Visualization Agent + Graph Agent
       const existingNodeIds = [topicId, ...planNodeIds];
-      const parallelResults = await Promise.allSettled([
-        ...lessons.map((l) => visualizationAgent(l, emit)),
-        graphAgent(topic, lessons[0], existingNodeIds, emit),
-      ]);
+      const parallelResults = lessons.length > 0
+        ? await Promise.allSettled([
+            ...lessons.map((l) => visualizationAgent(l, emit)),
+            graphAgent(topic, lessons[0], existingNodeIds, emit),
+          ])
+        : [];
 
       // Extract graph result (last item)
       const graphResult = parallelResults[parallelResults.length - 1];
-      const { newNodes, newEdges } = graphResult.status === "fulfilled"
+      const { newNodes, newEdges } = graphResult?.status === "fulfilled"
         ? graphResult.value as { newNodes: GraphNode[]; newEdges: GraphEdge[] }
         : { newNodes: [] as GraphNode[], newEdges: [] as GraphEdge[] };
 

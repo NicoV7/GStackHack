@@ -107,13 +107,15 @@ async function geminiChat(system: string, userMessage: string): Promise<string> 
 }
 
 async function ollamaChat(system: string, userMessage: string): Promise<string> {
+  // /no_think disables qwen3 reasoning mode — avoids wasting tokens on internal monologue
+  const systemWithNoThink = `/no_think\n${system}`;
   const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
       messages: [
-        { role: "system", content: system },
+        { role: "system", content: systemWithNoThink },
         { role: "user", content: userMessage },
       ],
       stream: false,

@@ -250,8 +250,8 @@ function handleSSEEvent(event) {
           const targetNode = GraphState.nodes.get(targetId);
           if (targetNode) targetNode.status = "active";
         }
-        // Also set on root node if it has no lesson yet (first lesson becomes root's lesson)
-        if (GraphState.rootId && !GraphState.nodes.get(GraphState.rootId)?.lesson) {
+        // Root only owns root-level lessons. Branch lessons stay on their pathway nodes.
+        if (!event.nodeId && GraphState.rootId && !GraphState.nodes.get(GraphState.rootId)?.lesson) {
           GraphState.setLesson(GraphState.rootId, event.lesson);
         }
         // Render if this is for the active node or no lesson displayed yet
@@ -276,6 +276,11 @@ function handleSSEEvent(event) {
       break;
     case "graph.edge_added":
       GraphState.addEdge(event.edge);
+      if (event.source === "gbrain.related") {
+        const from = GraphState.nodes.get(event.edge.source);
+        const to = GraphState.nodes.get(event.edge.target);
+        if (from && to) addAgentEvent("graph", `Related: ${from.topic} → ${to.topic}`, "done");
+      }
       updateStats();
       break;
     case "graph.prerequisite_suggested":
@@ -312,13 +317,26 @@ async function startPipeline(topic) {
   pipelineRunning = true;
   currentTopic = topic;
   clearAgentFeed();
-  GraphState.reset();
   if (graphEmpty) graphEmpty.classList.add("hidden");
   if (pipelineStatus) pipelineStatus.textContent = "Running...";
 
   // Add root node
   const topicId = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  GraphState.addRootNode(topicId, topic, null);
+  const existingTopicNode = GraphState.findByTopic(topic);
+  if (existingTopicNode?.lesson) {
+    GraphState.setActive(existingTopicNode.id);
+    renderLessonPanel(existingTopicNode.lesson, existingTopicNode.topic);
+    addAgentEvent("info", `"${existingTopicNode.topic}" already exists — opening saved lesson`, "done");
+    pipelineRunning = false;
+    if (pipelineStatus) pipelineStatus.textContent = "Saved lesson";
+    return;
+  }
+
+  GraphState.addRootNode(topicId, topic, existingTopicNode?.lesson || null);
+  if (!existingTopicNode?.lesson) {
+    renderLessonPlaceholder({ id: topicId, topic });
+    currentLesson = null;
+  }
   updateStats();
   renderGallery();
 
@@ -329,7 +347,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, sessionId: getSessionId() }),
+      body: JSON.stringify({ topic, sessionId: getSessionId(), existingNodes: GraphState.snapshotNodes() }),
     });
 
     const reader = res.body.getReader();
