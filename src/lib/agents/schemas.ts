@@ -50,7 +50,27 @@ export const RewireOutputSchema = z.object({
   reason: z.string(),
 });
 
+export const VisualizationOutputSchema = z.object({
+  type: z.enum(["svg", "diagram", "graph", "animation"]),
+  spec: z.string(),
+  description: z.string(),
+  interactiveHint: z.string().nullable(),
+});
+
+export const LessonPlanSchema = z.object({
+  subTopic: z.string(),
+  focus: z.string(),
+  visualStyle: z.enum(["graph", "diagram", "animation", "example"]),
+  prerequisiteOf: z.string().nullable(),
+});
+
+export const DecompositionOutputSchema = z.object({
+  plans: z.array(LessonPlanSchema).min(1).max(4),
+});
+
 export type SourceOutput = z.infer<typeof SourceSchema>;
 export type LessonOutput = z.infer<typeof LessonSchema>;
 export type GraphOutput = z.infer<typeof GraphOutputSchema>;
 export type RewireOutput = z.infer<typeof RewireOutputSchema>;
+export type VisualizationOutput = z.infer<typeof VisualizationOutputSchema>;
+export type DecompositionOutput = z.infer<typeof DecompositionOutputSchema>;

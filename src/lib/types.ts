@@ -35,15 +35,27 @@ export interface GraphEdge {
   type: "prerequisite" | "branch" | "suggested";
 }
 
+export interface LearnerProfile {
+  languageLevel: "beginner" | "intermediate" | "advanced";
+  visualPreference: "graphs" | "diagrams" | "animations" | "examples";
+  weakAreas: string[];
+  completedTopics: string[];
+}
+
 export type SSEEventType =
   | "browser.searching"
   | "browser.source_found"
+  | "decomposition.started"
+  | "decomposition.plan_created"
+  | "decomposition.complete"
   | "lesson.writing"
   | "lesson.visualization"
   | "lesson.quiz_generated"
   | "graph.node_added"
   | "graph.edge_added"
   | "graph.prerequisite_suggested"
+  | "visualization.started"
+  | "visualization.complete"
   | "pipeline.complete"
   | "pipeline.error";
 
