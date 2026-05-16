@@ -1,8 +1,8 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { execFile, spawn } from "child_process";
+import { promisify } from "util";
 import type { LearnerProfile, Source, Lesson } from "./types";
 
-const GBRAIN_URL = process.env.GBRAIN_URL || "http://localhost:4100";
+const exec = promisify(execFile);
 
 const DEFAULT_PROFILE: LearnerProfile = {
   languageLevel: "intermediate",
@@ -11,67 +11,60 @@ const DEFAULT_PROFILE: LearnerProfile = {
   completedTopics: [],
 };
 
-let clientP: Promise<Client> | null = null;
-
-function getClient(): Promise<Client> {
-  if (!clientP) {
-    clientP = (async () => {
-      const t = new StreamableHTTPClientTransport(new URL("/mcp", GBRAIN_URL));
-      const c = new Client({ name: "learngraph", version: "0.1.0" });
-      await c.connect(t);
-      return c;
-    })();
-  }
-  return clientP;
-}
-
-async function call(name: string, args: Record<string, unknown>) {
-  return (await getClient()).callTool({ name, arguments: args });
-}
-
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-
 const safeSessionId = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "anonymous";
 
-type Content = Array<{ text?: string }>;
-const extractText = (res: Awaited<ReturnType<typeof call>>) =>
-  (res.content as Content)?.[0]?.text || null;
+async function gbrainGet(pageSlug: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec("gbrain", ["get", pageSlug]);
+    return stdout || null;
+  } catch { return null; }
+}
+
+function gbrainPut(pageSlug: string, content: string, type = "concept"): Promise<void> {
+  return new Promise((resolve) => {
+    const frontmatter = `---\ntype: ${type}\ntitle: ${pageSlug}\n---\n\n`;
+    const child = spawn("gbrain", ["put", pageSlug]);
+    child.stdin.write(frontmatter + content);
+    child.stdin.end();
+    child.on("close", () => resolve());
+    child.on("error", () => resolve());
+  });
+}
+
+async function gbrainQuery(question: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec("gbrain", ["query", question]);
+    return stdout || null;
+  } catch { return null; }
+}
 
 export async function getProfile(sessionId: string): Promise<LearnerProfile> {
-  try {
-    const sid = safeSessionId(sessionId);
-    const text = extractText(await call("get_page", { path: `users/${sid}/profile` }));
-    return text ? (JSON.parse(text) as LearnerProfile) : DEFAULT_PROFILE;
-  } catch { clientP = null; return DEFAULT_PROFILE; }
+  const sid = safeSessionId(sessionId);
+  const text = await gbrainGet(`users-${sid}-profile`);
+  if (!text) return DEFAULT_PROFILE;
+  try { return JSON.parse(text.replace(/^---[\s\S]*?---\n*/m, "")) as LearnerProfile; }
+  catch { return DEFAULT_PROFILE; }
 }
 
 export async function putResearch(sessionId: string, topic: string, sources: Source[]): Promise<void> {
-  try {
-    const sid = safeSessionId(sessionId);
-    await call("put_page", { path: `users/${sid}/research/${slug(topic)}`, type: "research", body: JSON.stringify(sources) });
-  } catch { clientP = null; }
+  const sid = safeSessionId(sessionId);
+  await gbrainPut(`users-${sid}-research-${slug(topic)}`, JSON.stringify(sources, null, 2), "research");
 }
 
 export async function putLesson(sessionId: string, topic: string, subId: string, lesson: Lesson): Promise<void> {
-  try {
-    const sid = safeSessionId(sessionId);
-    await call("put_page", { path: `users/${sid}/lessons/${slug(topic)}/${subId}`, type: "lesson", body: lesson.content });
-  } catch { clientP = null; }
+  const sid = safeSessionId(sessionId);
+  await gbrainPut(`users-${sid}-lessons-${slug(topic)}-${subId}`, lesson.content, "lesson");
 }
 
 export async function putConceptMemory(sessionId: string, topic: string, body: string): Promise<void> {
-  try {
-    const sid = safeSessionId(sessionId);
-    await call("put_page", { path: `users/${sid}/concepts/${slug(topic)}`, type: "concept", body });
-  } catch { clientP = null; }
+  const sid = safeSessionId(sessionId);
+  await gbrainPut(`users-${sid}-concepts-${slug(topic)}`, body, "concept");
 }
 
 export async function queryContext(sessionId: string, topic: string): Promise<string[]> {
-  try {
-    const sid = safeSessionId(sessionId);
-    const text = extractText(await call("query", { query: topic, prefix: `users/${sid}/` }));
-    if (!text) return [];
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { clientP = null; return []; }
+  const sid = safeSessionId(sessionId);
+  const text = await gbrainQuery(`${topic} user:${sid}`);
+  if (!text) return [];
+  return text.split("\n").filter(Boolean).slice(0, 5);
 }
