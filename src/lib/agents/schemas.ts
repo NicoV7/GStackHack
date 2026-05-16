@@ -21,7 +21,7 @@ export const QuestionSchema = z.object({
 
 export const LessonSchema = z.object({
   title: z.string(),
-  content: z.string(),
+  content: z.string().max(600),
   visualization: z.string().optional(),
   quiz: z.array(QuestionSchema),
 });

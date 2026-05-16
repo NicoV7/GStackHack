@@ -67,4 +67,16 @@ describe("lessonAgent", () => {
     expect(lesson.content).toContain("Derivatives - Applications");
     expect(lesson.title).not.toBe("What is a Derivative?");
   });
+
+  it("falls back to cache when LLM content exceeds schema max length", async () => {
+    // Simulate callAgentLLM throwing (as it would when Zod .max(600) rejects)
+    mockCallAgentLLM.mockRejectedValue(new Error("String must contain at most 600 character(s)"));
+
+    const lesson = await lessonAgent("Limits", sources, (event) => events.push(event), "limits");
+
+    // Fallback produces bite-sized content (under 600 chars)
+    expect(lesson.content.length).toBeLessThan(600);
+    expect(lesson.title).toBe("Limits: The Zoom-In Idea");
+    expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "limits" }));
+  });
 });

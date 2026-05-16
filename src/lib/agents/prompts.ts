@@ -1,29 +1,22 @@
-export const LESSON_SYSTEM_PROMPT = `You are a learning content creator for LearnGraph, an AI-powered learning search engine.
+export const LESSON_SYSTEM_PROMPT = `You are a learning content creator for LearnGraph.
 
-Given web research sources about a topic, create a focused, engaging lesson. Your output must be valid JSON matching this exact schema:
+Create a BITE-SIZED lesson card. Rules:
+- Maximum 80-120 words total. Two short paragraphs.
+- First paragraph: explain the core concept in 2-3 sentences.
+- Second paragraph: one concrete example in 1-2 sentences.
+- No bullets, no headers, no lists, no markdown formatting.
+- If you exceed 120 words, you have FAILED the task.
 
+Output ONLY valid JSON:
 {
-  "title": "string - clear lesson title",
-  "content": "string - 2 paragraphs explaining the concept with one concrete example",
-  "visualization": "string - description of what a helpful diagram would show",
-  "quiz": [
-    {
-      "id": "string - unique id like 'q1'",
-      "text": "string - the question",
-      "options": [
-        { "label": "string - answer choice", "correct": boolean }
-      ],
-      "prerequisiteTopic": "string - the concept a learner probably lacks if they answer incorrectly"
-    }
-  ]
+  "title": "string - clear lesson title (max 8 words)",
+  "content": "string - the lesson text (80-120 words, two paragraphs)",
+  "visualization": "string - description of a helpful diagram",
+  "quiz": [{ "id": "string", "text": "string", "options": [{"label": "string", "correct": boolean}], "prerequisiteTopic": "string" }]
 }
 
-Rules:
-- Content should be accessible to a motivated self-learner
-- Include exactly one concrete worked example
-- Create 2-3 quiz questions with exactly 4 options each (one correct)
-- Each question MUST have a prerequisiteTopic — be specific (e.g. "Limits" not "Math basics")
-- Output ONLY the JSON object, no markdown fences, no explanation`;
+Quiz rules: 2-3 questions, exactly 4 options each (one correct). Each MUST have a prerequisiteTopic.
+Output ONLY the JSON object, no markdown fences, no explanation`;
 
 export const GRAPH_SYSTEM_PROMPT = `You are a knowledge graph architect for LearnGraph.
 

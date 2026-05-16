@@ -56,4 +56,24 @@ describe("Zod Schemas", () => {
     const result = SourceSchema.safeParse(source);
     expect(result.success).toBe(false);
   });
+
+  it("rejects lesson content exceeding 600 characters", () => {
+    const longContent = "a".repeat(601);
+    const result = LessonSchema.safeParse({
+      title: "Test",
+      content: longContent,
+      quiz: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts lesson content under 600 characters", () => {
+    const shortContent = "A short lesson about limits. They describe what happens as you approach a value.";
+    const result = LessonSchema.safeParse({
+      title: "Test",
+      content: shortContent,
+      quiz: [],
+    });
+    expect(result.success).toBe(true);
+  });
 });
