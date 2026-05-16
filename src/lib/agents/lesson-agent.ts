@@ -40,7 +40,10 @@ export async function lessonAgent(
 
 function fallbackToCache(topic: string, sources: Source[], emit: EmitFn, nodeId?: string): Lesson {
   const normalized = topic.trim().toLowerCase();
-  const cached = CACHED_LESSONS[normalized];
+  const cached =
+    CACHED_LESSONS[normalized] ??
+    (normalized.includes("limits") ? CACHED_LESSONS.limits : undefined) ??
+    (normalized.includes("derivative") ? CACHED_LESSONS.derivatives : undefined);
 
   const lesson: Lesson = cached
     ? { ...cached, sources }

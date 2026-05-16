@@ -118,9 +118,18 @@ export async function POST(req: Request) {
       }
 
       // ⑤ Fan-out Lesson Agents (with nodeId routing)
-      const lessonResults = await Promise.allSettled(
-        effectivePlans.map((plan, i) => lessonAgent(plan.subTopic, sources, emit, planNodeIds[i]))
-      );
+      let lessonResults: PromiseSettledResult<Lesson>[];
+      if (prerequisite) {
+        const secondaryResults = await Promise.allSettled(
+          effectivePlans.slice(1).map((plan, i) => lessonAgent(plan.subTopic, sources, emit, planNodeIds[i + 1]))
+        );
+        const primaryLesson = await lessonAgent(effectivePlans[0].subTopic, sources, emit, planNodeIds[0]);
+        lessonResults = [{ status: "fulfilled", value: primaryLesson }, ...secondaryResults];
+      } else {
+        lessonResults = await Promise.allSettled(
+          effectivePlans.map((plan, i) => lessonAgent(plan.subTopic, sources, emit, planNodeIds[i]))
+        );
+      }
       const lessons = lessonResults
         .filter((r): r is PromiseFulfilledResult<Lesson> => r.status === "fulfilled")
         .map((r) => r.value);
