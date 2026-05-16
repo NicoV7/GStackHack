@@ -111,12 +111,87 @@ function renderLessonPanel(lesson, topic) {
     <div class="lesson-content">${lesson.content || ""}</div>
     ${sourcesHtml}
     ${quizHtml}
+    <button class="deep-dive-btn" onclick="loadDeepDive('${(lesson.title || topic).replace(/'/g, "\\'")}')">Learn more \u2192</button>
   `;
 
   // Wire quiz buttons
   lessonPanel.querySelectorAll(".quiz-option").forEach((btn) => {
     btn.addEventListener("click", () => handleQuizAnswer(btn, lesson));
   });
+}
+
+async function loadDeepDive(topic) {
+  const btn = document.querySelector('.deep-dive-btn');
+  if (btn) btn.textContent = 'Loading deep dive...';
+
+  try {
+    const sources = currentLesson?.sources || [];
+    const res = await fetch('/api/deep-dive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, sources }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderDeepDive(data);
+  } catch (e) {
+    if (btn) btn.textContent = 'Deep dive failed \u2014 try again';
+    console.error('Deep dive error:', e);
+  }
+}
+
+function renderDeepDive(data) {
+  if (!lessonPanel) return;
+
+  const sectionsHtml = data.sections.map(section => {
+    switch (section.type) {
+      case 'mermaid':
+        return `<div class="deep-dive-section mermaid-section"><pre class="mermaid">${section.content}</pre></div>`;
+      case 'explanation':
+        return `<div class="deep-dive-section explanation-section"><p>${section.content.replace(/\n\n/g, '</p><p>')}</p></div>`;
+      case 'workedExample':
+        return `<div class="deep-dive-section example-section"><h3>Worked Example</h3><pre class="worked-example">${section.content}</pre></div>`;
+      case 'comparisonTable':
+        return `<div class="deep-dive-section table-section">${markdownTableToHtml(section.content)}</div>`;
+      case 'quiz':
+        return `<div class="deep-dive-section quiz-section"><p><em>Quiz available in card view</em></p></div>`;
+      default:
+        return `<div class="deep-dive-section"><p>${section.content}</p></div>`;
+    }
+  }).join('');
+
+  lessonPanel.innerHTML = `
+    <h2 class="lesson-title">${data.title}</h2>
+    <div class="deep-dive-content">${sectionsHtml}</div>
+    <button class="deep-dive-btn" onclick="backToCard()">← Back to card</button>
+  `;
+
+  // Render Mermaid diagrams
+  mermaid.run({ nodes: lessonPanel.querySelectorAll('.mermaid') });
+}
+
+function backToCard() {
+  if (currentLesson) {
+    renderLessonPanel(currentLesson, currentLesson.title || currentTopic);
+  }
+}
+
+function markdownTableToHtml(md) {
+  const lines = md.trim().split('\n').filter(l => !l.match(/^\|[-\s|]+\|$/));
+  if (lines.length === 0) return '<p>' + md + '</p>';
+
+  const rows = lines.map(line =>
+    line.split('|').filter(cell => cell.trim()).map(cell => cell.trim())
+  );
+
+  let html = '<table class="comparison-table">';
+  html += '<thead><tr>' + rows[0].map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+  html += '<tbody>' + rows.slice(1).map(row =>
+    '<tr>' + row.map(c => `<td>${c}</td>`).join('') + '</tr>'
+  ).join('') + '</tbody></table>';
+
+  return html;
 }
 
 function handleQuizAnswer(btn, lesson) {
@@ -296,7 +371,7 @@ function handleSSEEvent(event) {
       addAgentEvent("info", `GBrain memory saved: ${event.topic || "session"}`, "done");
       break;
     case "gbrain.offline":
-      addAgentEvent("info", "GBrain offline — using cached/local memory", "error");
+      addAgentEvent("info", `GBrain offline${formatGbrainReason(event)} — using cached/local memory`, "error");
       break;
     case "pipeline.complete":
       addAgentEvent("info", `Pipeline complete (${event.totalMs}ms)`, "done");
@@ -309,6 +384,13 @@ function handleSSEEvent(event) {
       if (pipelineStatus) pipelineStatus.textContent = "Error";
       break;
   }
+}
+
+function formatGbrainReason(event) {
+  const diagnostic = event.diagnostic || {};
+  const detail = diagnostic.lastError || event.reason;
+  if (!detail) return "";
+  return ` (${String(detail).slice(0, 96)})`;
 }
 
 // --- Pipeline ---
