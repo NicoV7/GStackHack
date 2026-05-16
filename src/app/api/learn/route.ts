@@ -1,53 +1,71 @@
 import { createSSEStream, sseResponse } from "@/lib/sse";
-import { CACHED_SOURCES, CACHED_LESSONS, CACHED_GRAPH_NODES, CACHED_GRAPH_EDGES } from "@/lib/demo-cache";
+import { browserAgent } from "@/lib/agents/browser-agent";
+import { lessonAgent } from "@/lib/agents/lesson-agent";
+import { graphAgent } from "@/lib/agents/graph-agent";
+import type { Lesson, GraphNode, GraphEdge } from "@/lib/types";
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// In-memory response cache — avoids re-calling APIs for the same topic
+const responseCache = new Map<
+  string,
+  { lesson: Lesson; nodes: GraphNode[]; edges: GraphEdge[] }
+>();
 
 export async function POST(req: Request) {
   const { topic } = (await req.json()) as { topic: string };
   const normalizedTopic = topic.trim().toLowerCase();
+  const topicId = normalizedTopic.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   const { readable, emit, close } = createSSEStream();
 
-  // Run the pipeline in the background so the response streams immediately
   (async () => {
+    const start = Date.now();
+
     try {
-      // --- Browser Agent ---
-      emit({ type: "browser.searching", query: `${topic} explanation tutorial` });
-      await delay(800);
-
-      const sources = CACHED_SOURCES[normalizedTopic] ?? CACHED_SOURCES.derivatives;
-      for (const source of sources) {
-        emit({ type: "browser.source_found", source });
-        await delay(400);
+      // Check cache first
+      const cached = responseCache.get(normalizedTopic);
+      if (cached) {
+        emit({ type: "browser.searching", query: `${topic} (cached)` });
+        for (const source of cached.lesson.sources) {
+          emit({ type: "browser.source_found", source });
+        }
+        emit({ type: "lesson.writing", topic });
+        if (cached.lesson.visualization) {
+          emit({ type: "lesson.visualization", description: cached.lesson.visualization });
+        }
+        emit({ type: "lesson.quiz_generated", lesson: cached.lesson });
+        for (const node of cached.nodes) {
+          emit({ type: "graph.node_added", node });
+        }
+        for (const edge of cached.edges) {
+          emit({ type: "graph.edge_added", edge });
+        }
+        emit({ type: "pipeline.complete", totalMs: Date.now() - start });
+        return;
       }
 
-      // --- Lesson Agent ---
-      emit({ type: "lesson.writing", topic });
-      await delay(1500);
+      // --- Stage 1: Browser Agent (Tavily search) ---
+      const sources = await browserAgent(topic, emit);
 
-      const lesson = CACHED_LESSONS[normalizedTopic] ?? CACHED_LESSONS.derivatives;
-      emit({ type: "lesson.visualization", description: lesson.visualization });
-      await delay(500);
-      emit({ type: "lesson.quiz_generated", lesson });
-      await delay(300);
+      // --- Stage 2: Lesson Agent (Claude) ---
+      const lesson = await lessonAgent(topic, sources, emit);
 
-      // --- Graph Agent ---
-      const nodes = CACHED_GRAPH_NODES[normalizedTopic] ?? CACHED_GRAPH_NODES.derivatives;
-      const edges = CACHED_GRAPH_EDGES[normalizedTopic] ?? CACHED_GRAPH_EDGES.derivatives;
+      // --- Stage 3: Graph Agent (Claude) ---
+      const existingNodeIds = [topicId];
+      const { newNodes, newEdges } = await graphAgent(
+        topic,
+        lesson,
+        existingNodeIds,
+        emit
+      );
 
-      for (const node of nodes) {
-        emit({ type: "graph.node_added", node });
-        await delay(350);
-      }
-      for (const edge of edges) {
-        emit({ type: "graph.edge_added", edge });
-        await delay(150);
-      }
+      // Cache the result
+      responseCache.set(normalizedTopic, {
+        lesson,
+        nodes: newNodes,
+        edges: newEdges,
+      });
 
-      emit({ type: "pipeline.complete", totalMs: Date.now() });
+      emit({ type: "pipeline.complete", totalMs: Date.now() - start });
     } catch (err) {
       emit({ type: "pipeline.error", error: String(err) });
     } finally {
