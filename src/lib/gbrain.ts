@@ -120,10 +120,38 @@ function extractMcpText(result: Awaited<ReturnType<typeof callMcp>>): string | n
   return (result.content as McpTextContent)?.[0]?.text || null;
 }
 
+function parseMcpJson(text: string | null): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function pageBodyFromMcp(text: string | null): string | null {
+  const parsed = parseMcpJson(text);
+  if (!parsed) return null;
+  if (typeof parsed === "string") return parsed;
+  if (typeof parsed === "object") {
+    const page = parsed as {
+      compiled_truth?: string;
+      timeline?: string;
+      content?: string;
+      body?: string;
+    };
+    return [
+      page.compiled_truth || page.content || page.body || "",
+      page.timeline || "",
+    ].filter(Boolean).join("\n\n") || null;
+  }
+  return null;
+}
+
 async function getPage(path: string): Promise<string | null> {
   if (gbrainUrl()) {
     try {
-      return extractMcpText(await callMcp("get_page", { path }));
+      return pageBodyFromMcp(extractMcpText(await callMcp("get_page", { slug: cliSlug(path) })));
     } catch (error) {
       recordGbrainError("mcp get_page", error);
       clientP = null;
@@ -151,7 +179,7 @@ async function putPage(sessionId: string, path: string, body: string, type: stri
 
   if (gbrainUrl()) {
     try {
-      await callMcp("put_page", { path, type, body: content });
+      await callMcp("put_page", { slug: cliSlug(path), content });
       return true;
     } catch (error) {
       recordGbrainError("mcp put_page", error);
@@ -185,16 +213,15 @@ async function queryPages(sessionId: string, topic: string): Promise<string[] | 
 
   if (gbrainUrl()) {
     try {
-      const text = extractMcpText(await callMcp("query", { query, pathPrefix: userRoot(sessionId) }));
-      if (!text) return [];
-      try {
-        const parsed = JSON.parse(text);
-        return Array.isArray(parsed) ? parsed.map(String).slice(0, 5) : [text].slice(0, 5);
-      } catch {
-        return text.split("\n").filter(Boolean).slice(0, 5);
+      const parsed = parseMcpJson(extractMcpText(await callMcp("search", { query, limit: 5 })));
+      if (!parsed) return [];
+      if (Array.isArray(parsed)) {
+        return parsed.map(formatSearchResult).filter(Boolean).slice(0, 5);
       }
+      if (typeof parsed === "string") return parsed.split("\n").filter(Boolean).slice(0, 5);
+      return [JSON.stringify(parsed)].slice(0, 5);
     } catch (error) {
-      recordGbrainError("mcp query", error);
+      recordGbrainError("mcp search", error);
       clientP = null;
       return null;
     }
@@ -328,4 +355,21 @@ export async function putConceptMemory(sessionId: string, topic: string, body: s
 
 export async function queryContext(sessionId: string, topic: string): Promise<string[]> {
   return (await queryPages(sessionId, topic)) ?? [];
+}
+
+function formatSearchResult(result: unknown): string {
+  if (!result || typeof result !== "object") return String(result || "");
+  const item = result as {
+    slug?: string;
+    title?: string;
+    type?: string;
+    compiled_truth?: string;
+    excerpt?: string;
+    text?: string;
+    score?: number;
+  };
+  return [
+    item.slug || item.title || item.type || "memory",
+    item.compiled_truth || item.excerpt || item.text || "",
+  ].filter(Boolean).join(": ");
 }
