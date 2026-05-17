@@ -138,7 +138,16 @@ describe("/api/learn", () => {
     }));
     const events = await readEvents(response);
 
-    expect(mockLessonAgent).toHaveBeenCalledTimes(1);
+    // Root lesson + 1 branch (Limits skipped because hasLesson: true)
+    expect(mockLessonAgent).toHaveBeenCalledTimes(2);
+    // First call: root lesson
+    expect(mockLessonAgent).toHaveBeenCalledWith(
+      "Derivative Duplicate Skip",
+      [source],
+      expect.any(Function),
+      expect.any(String),
+    );
+    // Second call: Power Rule (Limits skipped)
     expect(mockLessonAgent).toHaveBeenCalledWith(
       "Power Rule",
       [source],

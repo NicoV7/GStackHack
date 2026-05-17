@@ -24,6 +24,7 @@ const GraphState = {
   onNodeClick: null,
   _renderTimer: null,
   _edgeTimer: null,
+  _pendingRecalc: false,
   _cachedPositions: new Map(),
 
   // Pan state
@@ -136,6 +137,7 @@ const GraphState = {
     this.activeNodeId = null;
     this.rootId = null;
     this.focusId = null;
+    this._pendingRecalc = false;
     this._cachedPositions = new Map();
     if (this.nodesContainer) this.nodesContainer.innerHTML = "";
     if (this.svgEdges) this.svgEdges.innerHTML = "";
@@ -164,7 +166,7 @@ const GraphState = {
 
   setActive(id) {
     this.activeNodeId = id;
-    this._scheduleRender(false);
+    this._scheduleRender(!this._cachedPositions.size || !this._cachedPositions.has(id));
   },
 
   markCompleted(id) {
@@ -262,8 +264,13 @@ const GraphState = {
   },
 
   _scheduleRender(recalc = true) {
+    if (recalc) this._pendingRecalc = true;
     clearTimeout(this._renderTimer);
-    this._renderTimer = setTimeout(() => this.render(recalc), 16);
+    this._renderTimer = setTimeout(() => {
+      const shouldRecalc = this._pendingRecalc || recalc;
+      this._pendingRecalc = false;
+      this.render(shouldRecalc);
+    }, 16);
   },
 
   render(recalcPositions = true) {
