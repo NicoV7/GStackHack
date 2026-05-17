@@ -1,7 +1,5 @@
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { LearnerProfile, Source, Lesson } from "./types";
 
 const exec = promisify(execFile);
@@ -25,7 +23,9 @@ type StoredProfile = LearnerProfile & {
   expiresAt?: string;
 };
 
-let clientP: Promise<Client> | null = null;
+let oauthToken:
+  | { accessToken: string; expiresAt: number }
+  | null = null;
 
 export function safeSessionId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "anonymous";
@@ -37,6 +37,12 @@ function gbrainUrl(): string | undefined {
 
 function gbrainSharedSecret(): string | undefined {
   return process.env.GBRAIN_SHARED_SECRET?.trim() || undefined;
+}
+
+function gbrainClientCredentials(): { id: string; secret: string } | null {
+  const id = process.env.GBRAIN_CLIENT_ID?.trim();
+  const secret = process.env.GBRAIN_CLIENT_SECRET?.trim();
+  return id && secret ? { id, secret } : null;
 }
 
 function allowLocalCliFallback(): boolean {
@@ -89,29 +95,70 @@ export function getGbrainDiagnostic(): { configured: boolean; mode: "mcp" | "cli
   };
 }
 
-async function getClient(): Promise<Client> {
-  const url = gbrainUrl();
-  if (!url) throw new Error("GBRAIN_URL is not configured");
-  if (!clientP) {
-    clientP = (async () => {
-      const secret = gbrainSharedSecret();
-      const headers = secret
-        ? { Authorization: `Bearer ${secret}` }
-        : undefined;
-      const transport = new StreamableHTTPClientTransport(new URL("/mcp", url), {
-        requestInit: headers ? { headers } : undefined,
-      });
-      const client = new Client({ name: "learngraph", version: "0.1.0" });
-      await client.connect(transport);
-      return client;
-    })();
+async function gbrainBearerToken(url: string): Promise<string | undefined> {
+  const credentials = gbrainClientCredentials();
+  if (credentials) {
+    const now = Date.now();
+    if (oauthToken && oauthToken.expiresAt > now + 60_000) return oauthToken.accessToken;
+
+    const params = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: credentials.id,
+      client_secret: credentials.secret,
+      scope: "read write",
+    });
+    const res = await fetch(new URL("/token", url), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+    if (!res.ok) {
+      throw new Error(`GBrain token error: ${res.status} ${await res.text()}`);
+    }
+    const data = await res.json() as { access_token?: string; expires_in?: number };
+    if (!data.access_token) throw new Error("GBrain token response missing access_token");
+    oauthToken = {
+      accessToken: data.access_token,
+      expiresAt: now + Math.max(60, data.expires_in || 3600) * 1000,
+    };
+    return oauthToken.accessToken;
   }
-  return clientP;
+
+  return gbrainSharedSecret();
 }
 
 async function callMcp(name: string, args: Record<string, unknown>) {
-  const client = await getClient();
-  return client.callTool({ name, arguments: args });
+  const url = gbrainUrl();
+  if (!url) throw new Error("GBRAIN_URL is not configured");
+  const token = await gbrainBearerToken(url);
+  const res = await fetch(new URL("/mcp", url), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: { name, arguments: args },
+      id: Date.now(),
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`GBrain MCP error: ${res.status} ${text}`);
+  const payload = parseMcpResponse(text);
+  if (payload?.error) throw new Error(JSON.stringify(payload.error));
+  return payload?.result || { content: [] };
+}
+
+function parseMcpResponse(text: string): any {
+  const dataLine = text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("data:"));
+  const body = dataLine ? dataLine.slice(5).trim() : text.trim();
+  return body ? JSON.parse(body) : null;
 }
 
 type McpTextContent = Array<{ text?: string }>;
@@ -154,7 +201,6 @@ async function getPage(path: string): Promise<string | null> {
       return pageBodyFromMcp(extractMcpText(await callMcp("get_page", { slug: cliSlug(path) })));
     } catch (error) {
       recordGbrainError("mcp get_page", error);
-      clientP = null;
       return null;
     }
   }
@@ -183,7 +229,6 @@ async function putPage(sessionId: string, path: string, body: string, type: stri
       return true;
     } catch (error) {
       recordGbrainError("mcp put_page", error);
-      clientP = null;
       return false;
     }
   }
@@ -222,7 +267,6 @@ async function queryPages(sessionId: string, topic: string): Promise<string[] | 
       return [JSON.stringify(parsed)].slice(0, 5);
     } catch (error) {
       recordGbrainError("mcp search", error);
-      clientP = null;
       return null;
     }
   }
