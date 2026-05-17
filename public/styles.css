@@ -1263,6 +1263,8 @@ body {
 .agent-icon.search  { background: var(--blue-dim);   color: var(--blue); }
 .agent-icon.lesson  { background: rgba(244, 114, 182, 0.13); color: var(--pink); }
 .agent-icon.graph   { background: var(--accent-dim);  color: var(--accent-hi); }
+.agent-icon.profile { background: rgba(34, 197, 94, 0.12); color: var(--green); }
+.agent-icon.eval    { background: rgba(168, 85, 247, 0.13); color: #c084fc; }
 .agent-icon.info    { background: rgba(100, 100, 120, 0.13); color: var(--ink-2); }
 
 .agent-text {

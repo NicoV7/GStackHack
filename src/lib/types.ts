@@ -57,8 +57,10 @@ export type SSEEventType =
   | "visualization.started"
   | "visualization.complete"
   | "gbrain.context_loaded"
+  | "gbrain.memory_queued"
   | "gbrain.memory_written"
   | "gbrain.offline"
+  | "pipeline.metric"
   | "pipeline.complete"
   | "pipeline.error";
 

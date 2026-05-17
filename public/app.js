@@ -116,6 +116,30 @@ const chatLog = document.querySelector("#chatLog");
 let pipelineRunning = false;
 let currentTopic = "";
 let currentLesson = null;
+const nodeLessonRequests = new Set();
+
+// --- Session Identity ---
+const SESSION_ID_STORAGE_KEY = "learnGraphSessionId";
+const learnGraphSessionId = getOrCreateSessionId();
+
+function getOrCreateSessionId() {
+  const nextId = makeSessionId();
+
+  try {
+    const existingId = localStorage.getItem(SESSION_ID_STORAGE_KEY);
+    if (existingId) return existingId;
+    localStorage.setItem(SESSION_ID_STORAGE_KEY, nextId);
+  } catch {
+    // Storage can fail in restricted browser modes; the request still gets a stable id for this page load.
+  }
+
+  return nextId;
+}
+
+function makeSessionId() {
+  if (window.crypto?.randomUUID) return `lg-${window.crypto.randomUUID()}`;
+  return `lg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 // --- Fallback concept seeds (used when API is unreachable) ---
 const fallbackSeeds = {
@@ -145,10 +169,20 @@ function addAgentEvent(icon, text, status) {
   if (!agentFeed) return;
   const el = document.createElement("div");
   el.className = "agent-event";
-  const iconLabel = icon === "search" ? "B" : icon === "lesson" ? "L" : icon === "graph" ? "G" : "i";
+  const iconLabel = icon === "search"
+    ? "B"
+    : icon === "lesson"
+      ? "L"
+      : icon === "graph"
+        ? "G"
+        : icon === "profile"
+          ? "P"
+          : icon === "eval"
+            ? "E"
+            : "i";
   el.innerHTML = `
     <span class="agent-icon ${icon}">${iconLabel}</span>
-    <span class="agent-text">${text}</span>
+    <span class="agent-text">${escapeHtml(text)}</span>
     <span class="agent-status ${status}">${status === "done" ? "\u2713" : status === "working" ? "\u21BB" : ""}</span>
   `;
   agentFeed.appendChild(el);
@@ -161,6 +195,15 @@ function addAgentEvent(icon, text, status) {
 function clearAgentFeed() {
   if (agentFeed) agentFeed.innerHTML = "";
   if (agentTriggerCount) agentTriggerCount.textContent = "0";
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 // --- Lesson Panel ---
@@ -313,7 +356,10 @@ function handleQuizAnswer(btn, lesson) {
       const nextNode = GraphState.nodes.get(nextId);
       setTimeout(() => {
         if (nextNode?.lesson) renderLessonPanel(nextNode.lesson, nextNode.topic);
-        else renderLessonPlaceholder(nextNode);
+        else {
+          renderLessonPlaceholder(nextNode);
+          generateLessonForNode(nextNode);
+        }
         openLessonDrawer();
       }, 520); // wait for graph animation to start
     }
@@ -333,6 +379,7 @@ async function triggerRewire(question, wrongAnswer) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        sessionId: learnGraphSessionId,
         wrongAnswer,
         question,
         currentTopic,
@@ -415,11 +462,15 @@ function handleSSEEvent(event) {
       addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} questions`, "done");
       if (event.lesson) {
         currentLesson = event.lesson;
-        // Store lesson on the active graph node
-        if (GraphState.activeNodeId) {
-          GraphState.setLesson(GraphState.activeNodeId, event.lesson);
+        const lessonNodeId = event.nodeId || GraphState.activeNodeId;
+        if (lessonNodeId) {
+          GraphState.setLesson(lessonNodeId, event.lesson);
+          GraphState.setActive(lessonNodeId);
+          nodeLessonRequests.delete(lessonNodeId);
         }
-        renderLessonPanel(event.lesson, currentTopic);
+        const lessonNode = lessonNodeId ? GraphState.nodes.get(lessonNodeId) : null;
+        renderLessonPanel(event.lesson, lessonNode?.topic || currentTopic);
+        renderGallery();
       }
       break;
     case "graph.node_added":
@@ -459,6 +510,9 @@ function handleSSEEvent(event) {
     case "gbrain.context_loaded":
       addAgentEvent("info", `Memory loaded (${event.count || 0} notes)`, "done");
       break;
+    case "gbrain.memory_queued":
+      addAgentEvent("info", `Memory queued: ${event.topic || "session"}`, "working");
+      break;
     case "gbrain.memory_written":
       addAgentEvent("info", `Memory saved: ${event.topic || "session"}`, "done");
       break;
@@ -475,7 +529,61 @@ function handleSSEEvent(event) {
       pipelineRunning = false;
       if (pipelineStatus) pipelineStatus.textContent = "Error";
       break;
+    default:
+      renderAuxiliarySSEEvent(event);
+      break;
   }
+}
+
+function renderAuxiliarySSEEvent(event) {
+  if (!event?.type) return;
+
+  const type = String(event.type);
+  const normalizedType = type.toLowerCase();
+  const category = normalizedType.split(".")[0];
+  const isProfile = category === "profile" || normalizedType.includes("profile");
+  const isEval = category === "eval" || normalizedType.includes("eval");
+  const isMetric = category === "metric" || normalizedType.includes("metric");
+  if (!isProfile && !isEval && !isMetric) return;
+
+  const label = isProfile ? "Profile" : isEval ? "Eval" : "Metric";
+  const detail = formatAuxiliaryEventDetail(event);
+  const status = /error|fail/i.test(type) ? "error" : /start|running|progress/i.test(type) ? "working" : "done";
+  const text = detail ? `${label}: ${detail}` : `${label}: ${type}`;
+
+  addAgentEvent(isProfile ? "profile" : "eval", text, status);
+  if (pipelineStatus && (isEval || isMetric)) pipelineStatus.textContent = text.slice(0, 80);
+}
+
+function formatAuxiliaryEventDetail(event) {
+  const detail =
+    event.message ||
+    event.summary ||
+    event.name ||
+    event.metric ||
+    event.label ||
+    event.stage ||
+    event.profile?.summary ||
+    event.profile?.goal ||
+    event.result;
+
+  if (detail) {
+    const value = event.value ?? event.score ?? event.ms ?? event.durationMs;
+    return value === undefined ? String(detail) : `${detail}: ${formatMetricValue(value)}`;
+  }
+
+  const value = event.value ?? event.score ?? event.ms ?? event.durationMs ?? event.count;
+  if (value !== undefined) return `${String(event.type).split(".").pop()}: ${formatMetricValue(value)}`;
+
+  return "";
+}
+
+function formatMetricValue(value) {
+  if (typeof value === "number") {
+    if (Number.isInteger(value)) return String(value);
+    return value.toFixed(2);
+  }
+  return String(value);
 }
 
 function formatGbrainReason(event) {
@@ -509,7 +617,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic }),
+      body: JSON.stringify({ topic, sessionId: learnGraphSessionId }),
     });
 
     const reader = res.body.getReader();
@@ -634,7 +742,10 @@ function renderGallery() {
       if (!node) return;
       GraphState.setActive(node.id);
       if (node.lesson) renderLessonPanel(node.lesson, node.topic);
-      else renderLessonPlaceholder(node);
+      else {
+        renderLessonPlaceholder(node);
+        generateLessonForNode(node);
+      }
       openLessonDrawer();
       renderGallery();
     });
@@ -648,6 +759,58 @@ function addChatMessage(role, text) {
   message.textContent = text;
   chatLog.appendChild(message);
   chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+async function generateLessonForNode(node) {
+  if (!node || node.lesson || nodeLessonRequests.has(node.id)) return;
+  nodeLessonRequests.add(node.id);
+  addAgentEvent("lesson", `Writing branch lesson: ${node.topic}`, "working");
+
+  try {
+    const res = await fetch("/api/learn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        topic: node.topic,
+        nodeId: node.id,
+        mode: "single",
+        sessionId: learnGraphSessionId,
+        existingNodes: getExistingLessonNodes(),
+      }),
+    });
+
+    if (!res.ok || !res.body) throw new Error(`Lesson request failed: ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            handleSSEEvent(JSON.parse(line.slice(6)));
+          } catch { /* skip malformed */ }
+        }
+      }
+    }
+  } catch {
+    addAgentEvent("lesson", `Could not load ${node.topic}`, "error");
+    nodeLessonRequests.delete(node.id);
+  }
+}
+
+function getExistingLessonNodes() {
+  return Array.from(GraphState.nodes.values()).map((node) => ({
+    id: node.id,
+    topic: node.topic,
+    hasLesson: Boolean(node.lesson),
+  }));
 }
 
 // --- Form Submit ---

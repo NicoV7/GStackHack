@@ -31,6 +31,10 @@ export async function decompositionAgent(
 ): Promise<DecompositionResult> {
   emit({ type: "decomposition.started", topic });
 
+  if (process.env.ENABLE_LLM_DECOMPOSITION !== "true") {
+    return emitResult(templateDecomposition(topic, profile), emit);
+  }
+
   try {
     const sourcesText = sources
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.excerpt}`)
@@ -54,12 +58,12 @@ export async function decompositionAgent(
     const parsed = DecompositionOutputSchema.safeParse(JSON.parse(jsonStr));
 
     if (!parsed.success) {
-      return emitResult(fallbackDecomposition(topic), emit);
+      return emitResult(templateDecomposition(topic, profile), emit);
     }
 
-    return emitResult(parsed.data, emit);
+    return emitResult(boundPlans(parsed.data), emit);
   } catch {
-    return emitResult(fallbackDecomposition(topic), emit);
+    return emitResult(templateDecomposition(topic, profile), emit);
   }
 }
 
@@ -71,11 +75,32 @@ function emitResult(result: DecompositionResult, emit: EmitFn): DecompositionRes
   return result;
 }
 
-function fallbackDecomposition(topic: string): DecompositionResult {
+function templateDecomposition(topic: string, profile: LearnerProfile): DecompositionResult {
+  const visualStyle = profile.visualPreference === "graphs" ? "graph" : "diagram";
   return {
     plans: [
-      { subTopic: `${topic} - Foundations`, focus: "Core concepts and definitions", visualStyle: "diagram", prerequisiteOf: `${topic} - Applications` },
-      { subTopic: `${topic} - Applications`, focus: "Practical examples and usage", visualStyle: "example", prerequisiteOf: null },
+      {
+        subTopic: `${topic} - Core idea`,
+        focus: `The one mental model that makes ${topic} click`,
+        visualStyle,
+        prerequisiteOf: `${topic} - Worked example`,
+      },
+      {
+        subTopic: `${topic} - Worked example`,
+        focus: `Apply ${topic} to one concrete example`,
+        visualStyle: "example",
+        prerequisiteOf: `${topic} - Common mistake`,
+      },
+      {
+        subTopic: `${topic} - Common mistake`,
+        focus: `The misconception most learners hit with ${topic}`,
+        visualStyle: "diagram",
+        prerequisiteOf: null,
+      },
     ],
   };
+}
+
+function boundPlans(result: DecompositionResult): DecompositionResult {
+  return { plans: result.plans.slice(0, 3) };
 }
