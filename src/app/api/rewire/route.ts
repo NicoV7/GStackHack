@@ -30,6 +30,12 @@ export async function POST(req: Request) {
 
       // Write misconception to GBrain
       if (prerequisiteTopic) {
+        if (process.env.DISABLE_GBRAIN === "true") {
+          emit({ type: "gbrain.memory_written", topic: body.currentTopic, source: "local" });
+          emit({ type: "pipeline.complete", totalMs: 0 });
+          return;
+        }
+
         const prerequisite: string = prerequisiteTopic;
         const writes = [
           () => putConceptMemory(

@@ -120,7 +120,9 @@ const nodeLessonRequests = new Set();
 
 // --- Session Identity ---
 const SESSION_ID_STORAGE_KEY = "learnGraphSessionId";
+const MEMORY_STORAGE_KEY = "learnGraphMemoryV1";
 const learnGraphSessionId = getOrCreateSessionId();
+let learnGraphMemory = loadPersistentMemory();
 
 function getOrCreateSessionId() {
   const nextId = makeSessionId();
@@ -139,6 +141,134 @@ function getOrCreateSessionId() {
 function makeSessionId() {
   if (window.crypto?.randomUUID) return `lg-${window.crypto.randomUUID()}`;
   return `lg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function defaultPersistentMemory() {
+  return {
+    version: 1,
+    profile: {
+      languageLevel: "intermediate",
+      visualPreference: "diagrams",
+      weakAreas: [],
+      completedTopics: [],
+    },
+    notes: [],
+    topics: {},
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function loadPersistentMemory() {
+  try {
+    const raw = localStorage.getItem(MEMORY_STORAGE_KEY);
+    if (!raw) return defaultPersistentMemory();
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaultPersistentMemory(),
+      ...parsed,
+      profile: { ...defaultPersistentMemory().profile, ...(parsed.profile || {}) },
+      notes: Array.isArray(parsed.notes) ? parsed.notes.slice(-40) : [],
+      topics: parsed.topics && typeof parsed.topics === "object" ? parsed.topics : {},
+    };
+  } catch {
+    return defaultPersistentMemory();
+  }
+}
+
+function savePersistentMemory() {
+  learnGraphMemory.updatedAt = new Date().toISOString();
+  learnGraphMemory.notes = learnGraphMemory.notes.slice(-40);
+  learnGraphMemory.profile.weakAreas = uniqueStrings(learnGraphMemory.profile.weakAreas).slice(0, 12);
+  learnGraphMemory.profile.completedTopics = uniqueStrings(learnGraphMemory.profile.completedTopics).slice(0, 24);
+  try {
+    localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(learnGraphMemory));
+  } catch {
+    // Ignore storage quota / private mode failures. The in-page memory still works for this run.
+  }
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((values || []).filter(Boolean).map(String)));
+}
+
+function rememberSearch(topic) {
+  const key = normalizeTopicKey(topic);
+  learnGraphMemory.topics[key] = {
+    ...(learnGraphMemory.topics[key] || {}),
+    topic,
+    lastSearchedAt: new Date().toISOString(),
+  };
+  appendMemoryNote(`Started a learning session on ${topic}.`);
+  savePersistentMemory();
+}
+
+function rememberLessonReady(lesson, topic) {
+  const key = normalizeTopicKey(topic || lesson?.title || currentTopic);
+  learnGraphMemory.topics[key] = {
+    ...(learnGraphMemory.topics[key] || {}),
+    topic: topic || lesson?.title || currentTopic,
+    lastLessonTitle: lesson?.title,
+    lastSeenAt: new Date().toISOString(),
+  };
+  appendMemoryNote(`Saw lesson card: ${lesson?.title || topic || currentTopic}.`);
+  savePersistentMemory();
+}
+
+function rememberQuizResult({ topic, correct, wrongAnswer, question }) {
+  const safeTopic = topic || currentTopic;
+  const key = normalizeTopicKey(safeTopic);
+  const topicMemory = {
+    ...(learnGraphMemory.topics[key] || {}),
+    topic: safeTopic,
+    lastAnsweredAt: new Date().toISOString(),
+    lastResult: correct ? "correct" : "missed",
+  };
+
+  if (correct) {
+    learnGraphMemory.profile.completedTopics = uniqueStrings([safeTopic, ...learnGraphMemory.profile.completedTopics]);
+    appendMemoryNote(`Completed ${safeTopic}; next card can build on it.`);
+  } else {
+    const weakArea = question?.prerequisiteTopic || safeTopic;
+    learnGraphMemory.profile.weakAreas = uniqueStrings([weakArea, ...learnGraphMemory.profile.weakAreas]);
+    topicMemory.lastMisconception = `Answered "${wrongAnswer}" to "${question?.text || safeTopic}".`;
+    appendMemoryNote(`Misconception on ${safeTopic}: answered "${wrongAnswer}". Review ${weakArea}.`);
+  }
+
+  learnGraphMemory.topics[key] = topicMemory;
+  savePersistentMemory();
+}
+
+function appendMemoryNote(text) {
+  learnGraphMemory.notes.push({
+    at: new Date().toISOString(),
+    text: String(text).slice(0, 240),
+  });
+}
+
+function normalizeTopicKey(topic) {
+  return String(topic || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "topic";
+}
+
+function buildClientMemoryPayload() {
+  const topicSummaries = Object.values(learnGraphMemory.topics)
+    .slice(-12)
+    .map((item) => {
+      const parts = [item.topic || "topic"];
+      if (item.lastResult) parts.push(`last result: ${item.lastResult}`);
+      if (item.lastMisconception) parts.push(item.lastMisconception);
+      if (item.lastLessonTitle) parts.push(`last lesson: ${item.lastLessonTitle}`);
+      return parts.join(" — ");
+    });
+
+  const profile = learnGraphMemory.profile;
+  const context = [
+    profile.completedTopics.length ? `Completed topics: ${profile.completedTopics.join(", ")}` : "",
+    profile.weakAreas.length ? `Weak areas due for review: ${profile.weakAreas.join(", ")}` : "",
+    ...learnGraphMemory.notes.slice(-12).map((note) => note.text),
+    ...topicSummaries,
+  ].filter(Boolean);
+
+  return { profile, context };
 }
 
 // --- Fallback concept seeds (used when API is unreachable) ---
@@ -346,6 +476,8 @@ function handleQuizAnswer(btn, lesson) {
   if (isCorrect) {
     if (feedback) feedback.textContent = "Correct! Moving to the next concept...";
     const completedId = GraphState.activeNodeId;
+    const completedTopic = GraphState.nodes.get(completedId)?.topic || currentTopic;
+    rememberQuizResult({ topic: completedTopic, correct: true, question: lesson.quiz?.[0] });
     const nextId = GraphState.markCompleted(completedId);
     addAgentEvent("graph", `${GraphState.nodes.get(completedId)?.topic || currentTopic} learned`, "done");
     updateStats();
@@ -369,6 +501,12 @@ function handleQuizAnswer(btn, lesson) {
 
     // Trigger rewire agent
     const question = lesson.quiz[0];
+    rememberQuizResult({
+      topic: GraphState.nodes.get(GraphState.activeNodeId)?.topic || currentTopic,
+      correct: false,
+      wrongAnswer: btn.textContent,
+      question,
+    });
     triggerRewire(question, btn.textContent);
   }
 }
@@ -384,6 +522,7 @@ async function triggerRewire(question, wrongAnswer) {
         question,
         currentTopic,
         existingNodes: Array.from(GraphState.nodes.keys()),
+        clientMemory: buildClientMemoryPayload(),
       }),
     });
 
@@ -470,6 +609,7 @@ function handleSSEEvent(event) {
           nodeLessonRequests.delete(lessonNodeId);
         }
         const lessonNode = lessonNodeId ? GraphState.nodes.get(lessonNodeId) : null;
+        rememberLessonReady(event.lesson, lessonNode?.topic || currentTopic);
         renderLessonPanel(event.lesson, lessonNode?.topic || currentTopic);
         renderGallery();
         // Auto-open the drawer when the first lesson arrives
@@ -601,6 +741,7 @@ async function startPipeline(topic) {
   if (pipelineRunning) return;
   pipelineRunning = true;
   currentTopic = topic;
+  rememberSearch(topic);
   clearAgentFeed();
   GraphState.reset();
   openBentoDrawer();
@@ -620,7 +761,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, sessionId: learnGraphSessionId }),
+      body: JSON.stringify({ topic, sessionId: learnGraphSessionId, clientMemory: buildClientMemoryPayload() }),
     });
 
     const reader = res.body.getReader();
@@ -779,6 +920,7 @@ async function generateLessonForNode(node) {
         mode: "single",
         sessionId: learnGraphSessionId,
         existingNodes: getExistingLessonNodes(),
+        clientMemory: buildClientMemoryPayload(),
       }),
     });
 

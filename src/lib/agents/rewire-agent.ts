@@ -15,6 +15,11 @@ export interface RewireInput {
 export async function rewireAgent(input: RewireInput, emit: EmitFn) {
   const correctOption = input.question.options.find((o) => o.correct);
 
+  if (process.env.FAST_LOCAL_DEMO === "true") {
+    fallbackRewire(input, emit);
+    return;
+  }
+
   try {
     const result = await callAgentLLM(
       RewireOutputSchema,

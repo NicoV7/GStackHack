@@ -23,6 +23,10 @@ export async function lessonAgent(
 ): Promise<Lesson> {
   emit({ type: "lesson.writing", topic });
 
+  if (process.env.FAST_LOCAL_DEMO === "true") {
+    return fallbackToCache(topic, sources, emit, nodeId, plan);
+  }
+
   try {
     const sourcesText = sources
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.excerpt}\nURL: ${s.url}`)
