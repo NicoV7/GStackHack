@@ -31,12 +31,14 @@ export function buildLessonPathway(topicId: string, plans: LessonPlan[]): {
 
   if (plans.length === 0) return { nodeIds, nodes, edges };
 
-  addEdge({
-    id: `e-${topicId}-${nodeIds[0]}`,
-    source: topicId,
-    target: nodeIds[0],
-    type: "branch",
-  });
+  for (const nodeId of nodeIds) {
+    addEdge({
+      id: `e-${topicId}-${nodeId}`,
+      source: topicId,
+      target: nodeId,
+      type: "branch",
+    });
+  }
 
   plans.forEach((plan, index) => {
     const source = nodeIds[index];

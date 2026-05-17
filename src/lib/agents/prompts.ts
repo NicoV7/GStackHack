@@ -6,6 +6,10 @@ Rules:
 - title must be the clean concept name only (e.g. "Chain Rule", "Derivatives", "Limits") — never include the parent topic, dashes, or qualifiers like "derivatives - Applications"
 - content is 2 short paragraphs (50-80 words max)
 - One quiz question with 3 options
+- The quiz question must test the named concept directly, not generic understanding
+- Avoid generic quiz phrases like "key idea", "core principle", and "what should you notice"
+- Wrong options should be plausible misconceptions for this topic
+- prerequisiteTopic should name the missing concept exposed by the most tempting wrong answer
 - No markdown. JSON only.`;
 
 export const GRAPH_SYSTEM_PROMPT = `You are a knowledge graph architect for LearnGraph.
