@@ -332,16 +332,19 @@ body {
   flex-direction: row;
   gap: 8px;
   align-items: center;
-  background: var(--bg-surface);
-  border: 1px solid var(--line-bright);
+  background: rgba(22, 22, 19, 0.92);
+  border: 1px solid rgba(242, 240, 220, 0.22);
   border-radius: var(--r-lg);
   padding: 4px 4px 4px 16px;
-  transition: border-color 200ms var(--ease-snappy);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(242,240,220,0.06) inset;
+  transition: border-color 200ms var(--ease-snappy), box-shadow 200ms var(--ease-snappy);
 }
 
 .hero-search-wrap:focus-within {
-  border-color: rgba(217, 119, 6, 0.5);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  border-color: rgba(217, 119, 6, 0.6);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 3px var(--accent-glow);
 }
 
 .hero-search-bar {
@@ -414,24 +417,29 @@ body {
 }
 
 .hero-quick-searches button {
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--line-bright);
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(242, 240, 220, 0.2);
   border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink-3);
+  background: rgba(242, 240, 220, 0.07);
+  color: var(--ink-2);
   font-family: 'Geist', sans-serif;
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 500;
   cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   transition:
     transform 200ms var(--spring),
     border-color 180ms var(--ease-snappy),
+    background 180ms var(--ease-snappy),
     color 180ms var(--ease-snappy);
 }
 
 .hero-quick-searches button:hover {
   border-color: var(--accent);
+  background: rgba(217, 119, 6, 0.12);
   color: var(--accent-hi);
 }
 
