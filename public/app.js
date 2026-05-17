@@ -106,6 +106,21 @@ const lessonPanel = document.querySelector("#lessonPanel");
 const graphEmpty = document.querySelector("#graphEmpty");
 const graphStats = document.querySelector("#graphStats");
 const pipelineStatus = document.querySelector("#pipelineStatus");
+const resetGraphBtn = document.querySelector("#resetGraphBtn");
+
+// Reset graph button
+if (resetGraphBtn) {
+  resetGraphBtn.addEventListener("click", () => {
+    if (!confirm("Clear the entire graph? This cannot be undone.")) return;
+    GraphState.reset();
+    localStorage.removeItem("learnGraphSnapshotV1");
+    updateStats();
+    renderGallery();
+    if (graphEmpty) graphEmpty.classList.remove("hidden");
+    if (lessonPanel) lessonPanel.innerHTML = "";
+    clearAgentFeed();
+  });
+}
 const sourceStats = document.querySelector("#sourceStats");
 const galleryGrid = document.querySelector("#galleryGrid");
 const chatForm = document.querySelector("#chatForm");

@@ -1965,3 +1965,18 @@ body {
     transition-duration: 1ms !important;
   }
 }
+
+.reset-graph-btn {
+  background: rgba(255,80,80,0.15);
+  color: #ff6b6b;
+  border: 1px solid rgba(255,80,80,0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.reset-graph-btn:hover {
+  background: rgba(255,80,80,0.3);
+  color: #fff;
+}
