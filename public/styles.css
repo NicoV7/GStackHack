@@ -634,8 +634,7 @@ body {
 .main {
   flex: 1;
   overflow: hidden;
-  /* top: space for floating nav (14px padding + 48px pill + 14px padding) */
-  padding-top: 76px;
+  padding-top: 0;
   padding-bottom: 0;
   opacity: 0;
   pointer-events: none;
@@ -1322,7 +1321,7 @@ body {
 
 .gallery-item-inner {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px 1fr 12px;
   gap: 8px;
   align-items: center;
   padding: 7px 8px;
@@ -1343,12 +1342,17 @@ body {
   font-family: 'Geist Mono', monospace;
 }
 
+.gallery-item-text { overflow: hidden; }
+
 .gallery-item strong {
   display: block;
   font-size: 11px;
   font-weight: 600;
   color: var(--ink);
   letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gallery-item small {
@@ -1361,15 +1365,25 @@ body {
   white-space: nowrap;
 }
 
-.gallery-item em {
-  display: block;
-  color: var(--blue);
-  font-size: 9px;
-  font-style: normal;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  white-space: nowrap;
+/* Status dot (replaces the old em badge) */
+.gallery-item-status {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--ink-3);
+  opacity: 0.4;
+}
+
+.gallery-item-status.active {
+  background: var(--accent-hi);
+  opacity: 1;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
+}
+
+.gallery-item-status.done {
+  background: var(--green);
+  opacity: 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

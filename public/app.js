@@ -612,15 +612,16 @@ function renderGallery() {
   galleryGrid.innerHTML = nodes
     .map((node) => {
       const status = node.status === "prerequisite-suggested" ? "prereq" : node.status;
+      const statusClass = status === "completed" ? "done" : status === "active" ? "active" : "";
       return `
         <button class="gallery-item" type="button" data-node-id="${node.id}" role="listitem">
           <div class="gallery-item-inner">
             <span class="gallery-thumb">${node.topic.charAt(0).toUpperCase()}</span>
-            <span>
+            <span class="gallery-item-text">
               <strong>${node.topic}</strong>
-              <small>${node.lesson ? "Lesson ready" : "Waiting for lesson agent"}</small>
+              <small>${node.lesson ? "Lesson ready" : "Generating..."}</small>
             </span>
-            <em>${status}</em>
+            <span class="gallery-item-status ${statusClass}"></span>
           </div>
         </button>
       `;
