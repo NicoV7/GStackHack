@@ -361,6 +361,7 @@ body {
   box-shadow: none !important;
 }
 
+.hero-search-bar:focus { outline: none; }
 .hero-search-bar::placeholder { color: var(--ink-3); }
 
 .hero-search-btn {
