@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import * as AgentSchemas from "@/lib/agents/schemas";
 import { LessonSchema, GraphOutputSchema, RewireOutputSchema, SourceSchema } from "@/lib/agents/schemas";
 
 describe("Zod Schemas", () => {
@@ -75,5 +76,33 @@ describe("Zod Schemas", () => {
       quiz: [],
     });
     expect(result.success).toBe(true);
+  });
+
+  it("keeps metric/eval event schemas safe when those schemas are exported", () => {
+    const candidates = [
+      {
+        schemaName: "MetricEventSchema",
+        valid: { type: "metric.recorded", name: "lesson_generation_ms", value: 42, unit: "ms" },
+        invalid: { type: "metric.recorded", name: "lesson_generation_ms", value: Number.NaN, unit: "ms" },
+      },
+      {
+        schemaName: "EvalEventSchema",
+        valid: { type: "eval.completed", name: "lesson_quality", score: 0.92, passed: true },
+        invalid: { type: "eval.completed", name: "lesson_quality", score: 2, passed: true },
+      },
+    ];
+    const schemaExports = AgentSchemas as Record<string, { safeParse?: (value: unknown) => { success: boolean } }>;
+    const exportedCandidates = candidates.filter(({ schemaName }) => schemaExports[schemaName]?.safeParse);
+
+    if (exportedCandidates.length === 0) {
+      expect(Object.keys(AgentSchemas).filter((name) => /Metric|Eval/.test(name))).toEqual([]);
+      return;
+    }
+
+    for (const { schemaName, valid, invalid } of exportedCandidates) {
+      const schema = schemaExports[schemaName];
+      expect(schema.safeParse?.(valid).success).toBe(true);
+      expect(schema.safeParse?.(invalid).success).toBe(false);
+    }
   });
 });

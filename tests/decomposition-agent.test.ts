@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { decompositionAgent } from "@/lib/agents/decomposition-agent";
 import type { SSEEvent, Source } from "@/lib/types";
 import type { LearnerProfile } from "@/lib/agents/decomposition-agent";
@@ -27,7 +27,12 @@ describe("Decomposition Agent", () => {
 
   beforeEach(() => {
     events = [];
-    vi.clearAllMocks();
+    mockLlmChat.mockReset();
+    vi.stubEnv("ENABLE_LLM_DECOMPOSITION", "true");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("happy path — returns plans and emits correct SSE events", async () => {
@@ -46,14 +51,38 @@ describe("Decomposition Agent", () => {
     expect(result.plans[1].subTopic).toBe("Power Rule");
   });
 
-  it("invalid JSON — falls back to default 2-plan decomposition", async () => {
+  it("invalid JSON — falls back to the bounded template decomposition", async () => {
     mockLlmChat.mockResolvedValue("this is not json at all {{{{");
 
     const result = await decompositionAgent("Derivatives", sources, profile, emit);
 
-    expect(result.plans).toHaveLength(2);
-    expect(result.plans[0].subTopic).toBe("Derivatives - Foundations");
-    expect(result.plans[1].subTopic).toBe("Derivatives - Applications");
+    expect(result.plans).toHaveLength(3);
+    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
+      "Derivatives - Core idea",
+      "Derivatives - Worked example",
+      "Derivatives - Common mistake",
+    ]);
+  });
+
+  it("over-wide decompositions fall back to the bounded demo-speed pathway", async () => {
+    mockLlmChat.mockResolvedValue(JSON.stringify({
+      plans: Array.from({ length: 5 }, (_, index) => ({
+        subTopic: `Branch ${index + 1}`,
+        focus: `Focus ${index + 1}`,
+        visualStyle: "diagram",
+        prerequisiteOf: index < 4 ? `Branch ${index + 2}` : null,
+      })),
+    }));
+
+    const result = await decompositionAgent("Derivatives", sources, profile, emit);
+
+    expect(result.plans).toHaveLength(3);
+    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
+      "Derivatives - Core idea",
+      "Derivatives - Worked example",
+      "Derivatives - Common mistake",
+    ]);
+    expect(events.at(-1)).toEqual({ type: "decomposition.complete", count: 3 });
   });
 
   it("emits SSE events in order: decomposition.started → plan_created (per plan) → decomposition.complete", async () => {
