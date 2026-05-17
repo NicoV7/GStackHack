@@ -100,10 +100,9 @@ body {
   position: fixed;
   inset: 0;
   z-index: var(--z-hero);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto 1fr auto;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
   /* Transition out */
   opacity: 1;
@@ -121,44 +120,21 @@ body {
   pointer-events: none;
 }
 
-/* ── Left column: brand + copy + search ── */
-.hero-left {
-  grid-column: 1;
-  grid-row: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 64px 48px 64px 72px;
-  gap: 36px;
-  border-right: 1px solid var(--line);
-}
-
-/* ── Right column: live graph preview / ambient visual ── */
-.hero-right {
-  grid-column: 2;
-  grid-row: 1 / -1;
-  position: relative;
-  overflow: hidden;
-}
-
-.hero-right-bg {
+/* Full-bleed animated graph background */
+.hero-graph-bg {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(217, 119, 6, 0.07) 0%, transparent 65%),
-    var(--bg);
+  pointer-events: none;
+  z-index: 0;
 }
 
-.hero-right-label {
+/* Radial vignette so center content reads clearly over the nodes */
+.hero-graph-bg::after {
+  content: "";
   position: absolute;
-  top: 24px;
-  left: 24px;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  z-index: 2;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 50% 50%, transparent 20%, var(--bg) 80%);
+  z-index: 1;
 }
 
 /* SVG canvas for hero graph lines */
@@ -168,7 +144,7 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
 }
 
 /* Nodes layered above SVG */
@@ -176,7 +152,21 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Centered content column ── */
+.hero-center {
+  position: relative;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  width: 100%;
+  max-width: 640px;
+  padding: 0 24px;
+  text-align: center;
 }
 
 .hero-node-dot {
@@ -263,6 +253,7 @@ body {
 .hero-brand {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -284,12 +275,12 @@ body {
   color: var(--ink);
 }
 
-/* Copy block — left aligned */
+/* Copy block — centered */
 .hero-copy {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 20px;
+  align-items: center;
+  gap: 14px;
 }
 
 .hero-eyebrow {
@@ -308,69 +299,75 @@ body {
   letter-spacing: -0.025em;
   color: var(--ink);
   text-wrap: balance;
-  max-width: 18ch;
+  max-width: 22ch;
 }
 
 .hero-sub {
   font-size: 15px;
   font-weight: 400;
   color: var(--ink-2);
-  max-width: 48ch;
+  max-width: 52ch;
   line-height: 1.65;
   text-wrap: pretty;
 }
 
-/* Hero search — left aligned, no pill wrapper */
+/* Hero search — centered, single row */
 .hero-search-form {
   width: 100%;
-  max-width: 480px;
 }
 
 .hero-search-wrap {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--r-lg);
+  padding: 4px 4px 4px 16px;
+  transition: border-color 200ms var(--ease-snappy);
+}
+
+.hero-search-wrap:focus-within {
+  border-color: rgba(217, 119, 6, 0.5);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .hero-search-bar {
-  width: 100%;
-  height: 48px !important;
-  padding: 0 18px !important;
-  border-radius: var(--r) !important;
-  border: 1px solid var(--line-bright) !important;
-  background: var(--bg-surface) !important;
-  font-size: 15px !important;
+  flex: 1;
+  height: 44px;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  font-size: 15px;
   outline: none;
   color: var(--ink);
   font-family: 'Geist', sans-serif;
   font-weight: 400;
-  transition: border-color 200ms var(--ease-snappy) !important;
   box-shadow: none !important;
 }
 
 .hero-search-bar::placeholder { color: var(--ink-3); }
-.hero-search-bar:focus { border-color: var(--accent) !important; box-shadow: none !important; }
 
 .hero-search-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 46px !important;
-  padding: 0 20px !important;
+  gap: 8px;
+  height: 38px !important;
+  padding: 0 18px !important;
   border-radius: var(--r) !important;
-  font-size: 14px !important;
-  font-weight: 500;
-  letter-spacing: 0.01em;
+  font-size: 13px !important;
+  font-weight: 600;
   flex-shrink: 0;
   box-shadow: none !important;
+  white-space: nowrap;
   color: #0a0900;
   background: var(--accent-hi) !important;
   transition: background 200ms var(--ease-snappy), transform 180ms var(--spring) !important;
 }
 
 .hero-search-btn:hover { background: #fbbf24 !important; }
-.hero-search-btn:active { transform: scale(0.98) translateY(1px) !important; }
+.hero-search-btn:active { transform: scale(0.98) !important; }
 
 .btn-icon-wrap {
   display: inline-flex;
@@ -388,10 +385,11 @@ body {
   transform: translate(2px, -1px);
 }
 
-/* Hero quick searches — left aligned */
+/* Hero quick searches — centered */
 .hero-quick-searches {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   flex-wrap: wrap;
 }
@@ -1800,15 +1798,10 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
-  .hero-left {
-    padding: 56px 20px 40px;
+  .hero-center {
+    padding: 0 20px;
     gap: 24px;
-    border-right: none;
-    justify-content: flex-start;
-    padding-top: 72px; /* clear any safe area */
   }
-
-  .hero-right { display: none; }
 
   .hero-headline {
     font-size: clamp(28px, 7.5vw, 40px);

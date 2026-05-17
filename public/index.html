@@ -19,16 +19,29 @@
       <!-- ── Hero Overlay ─────────────────────────────────────── -->
       <div class="hero-overlay" id="heroOverlay" aria-hidden="false">
 
-        <div class="hero-left">
+        <!-- Animated graph nodes float behind everything -->
+        <div class="hero-graph-bg" aria-hidden="true">
+          <svg class="hero-graph-svg" id="heroGraphSvg"></svg>
+          <div class="hero-nodes-preview" id="heroNodesPreview">
+            <div class="hero-node-dot root" id="hn0">Derivatives</div>
+            <div class="hero-node-dot" id="hn1">Limits</div>
+            <div class="hero-node-dot" id="hn2">Slope</div>
+            <div class="hero-node-dot" id="hn3">Functions</div>
+            <div class="hero-node-dot done" id="hn4">Chain rule</div>
+            <div class="hero-node-dot" id="hn5">Product rule</div>
+          </div>
+        </div>
+
+        <!-- Centered content column -->
+        <div class="hero-center">
           <div class="hero-brand">
             <div class="brand-mark hero-brand-mark" aria-hidden="true"><span></span></div>
             <span class="hero-brand-name">LearnGraph</span>
           </div>
 
           <div class="hero-copy">
-            <p class="hero-eyebrow">AI learning search engine</p>
-            <h1 class="hero-headline">You do not browse a curriculum. You grow one.</h1>
-            <p class="hero-sub">Search any subject. Watch AI research, write, map, quiz, and rewire a knowledge graph in real time.</p>
+            <h1 class="hero-headline">You do not browse a curriculum.<br>You grow one.</h1>
+            <p class="hero-sub">Search any subject. AI researches, writes, maps, and quizzes you in real time.</p>
           </div>
 
           <form class="hero-search-form" id="heroSearchForm" role="search">
@@ -56,20 +69,6 @@
             <button type="button" data-topic="probability">Probability</button>
             <button type="button" data-topic="vectors">Vectors</button>
           </nav>
-        </div>
-
-        <div class="hero-right" aria-hidden="true">
-          <div class="hero-right-bg"></div>
-          <span class="hero-right-label">Live knowledge map</span>
-          <svg class="hero-graph-svg" id="heroGraphSvg"></svg>
-          <div class="hero-nodes-preview" id="heroNodesPreview">
-            <div class="hero-node-dot root" id="hn0">Derivatives</div>
-            <div class="hero-node-dot" id="hn1">Limits</div>
-            <div class="hero-node-dot" id="hn2">Slope</div>
-            <div class="hero-node-dot" id="hn3">Functions</div>
-            <div class="hero-node-dot done" id="hn4">Chain rule</div>
-            <div class="hero-node-dot" id="hn5">Product rule</div>
-          </div>
         </div>
 
       </div>
