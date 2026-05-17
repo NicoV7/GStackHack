@@ -461,6 +461,7 @@ function handleSSEEvent(event) {
     case "lesson.quiz_generated":
       addAgentEvent("lesson", `Lesson ready with ${event.lesson.quiz.length} questions`, "done");
       if (event.lesson) {
+        const isFirstLesson = !currentLesson;
         currentLesson = event.lesson;
         const lessonNodeId = event.nodeId || GraphState.activeNodeId;
         if (lessonNodeId) {
@@ -471,6 +472,8 @@ function handleSSEEvent(event) {
         const lessonNode = lessonNodeId ? GraphState.nodes.get(lessonNodeId) : null;
         renderLessonPanel(event.lesson, lessonNode?.topic || currentTopic);
         renderGallery();
+        // Auto-open the drawer when the first lesson arrives
+        if (isFirstLesson) openLessonDrawer();
       }
       break;
     case "graph.node_added":
