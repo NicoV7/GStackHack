@@ -3,6 +3,7 @@ import { browserAgent } from "@/lib/agents/browser-agent";
 import { lessonAgent } from "@/lib/agents/lesson-agent";
 import { graphAgent } from "@/lib/agents/graph-agent";
 import { decompositionAgent } from "@/lib/agents/decomposition-agent";
+import { visualizationAgent } from "@/lib/agents/visualization-agent";
 import { buildLessonPathway, buildRelatedNodeEdges, slugTopic, type ExistingLessonNode } from "@/lib/lesson-pathway";
 import { getGbrainDiagnostic, getProfile, putConceptMemory, putLesson, putResearch, queryContext, safeSessionId, touchSession } from "@/lib/gbrain";
 import type { Lesson, GraphNode, GraphEdge, LearnerProfile, Source, SSEEvent } from "@/lib/types";
@@ -95,10 +96,22 @@ export async function POST(req: Request) {
         const lesson = await lessonAgent(topic, sources, emit, nodeId);
         metrics.lesson_generation_ms = Date.now() - lessonStart;
         emitMetric("lesson_generation_ms", metrics.lesson_generation_ms, emit);
+        try { await visualizationAgent(lesson, emit); } catch {}
         queueMemoryWrite({ sid, topic, topicId, sources, lessons: [lesson], metrics, emit });
         emit({ type: "pipeline.complete", totalMs: Date.now() - start });
         return;
       }
+
+      // ③ Root lesson — generate for the search topic itself
+      const rootLessonStart = Date.now();
+      let rootLesson: Lesson | null = null;
+      try {
+        rootLesson = await lessonAgent(topic, sources, emit, topicId);
+      } catch {
+        // Root lesson failed — will still decompose into branches
+      }
+      metrics.root_lesson_ms = Date.now() - rootLessonStart;
+      emitMetric("root_lesson_ms", metrics.root_lesson_ms, emit);
 
       // ④ Decomposition Agent
       const decompositionStart = Date.now();
@@ -171,12 +184,22 @@ export async function POST(req: Request) {
         }
       }
       metrics.lesson_generation_ms = Date.now() - lessonStart;
-      metrics.cards_generated_count = lessons.length;
-      emitMetric("lesson_generation_ms", metrics.lesson_generation_ms, emit);
-      emitMetric("cards_generated_count", lessons.length, emit);
 
-      if (lessons.length === 0) {
+      // Combine root + branch lessons
+      const allLessons: Lesson[] = [];
+      if (rootLesson) allLessons.push(rootLesson);
+      allLessons.push(...lessons);
+      metrics.cards_generated_count = allLessons.length;
+      emitMetric("lesson_generation_ms", metrics.lesson_generation_ms, emit);
+      emitMetric("cards_generated_count", allLessons.length, emit);
+
+      if (allLessons.length === 0) {
         throw new Error("All lesson agents failed");
+      }
+
+      // ⑤b Visualization Agent — generate visuals for each lesson
+      for (const lesson of allLessons) {
+        try { await visualizationAgent(lesson, emit); } catch {}
       }
 
       // ⑥ Graph Agent is optional; heuristic graph/pathway is the default demo path.
@@ -186,7 +209,7 @@ export async function POST(req: Request) {
       if (process.env.ENABLE_GRAPH_AGENT === "true") {
         const graphStart = Date.now();
         try {
-          const graphResult = await graphAgent(topic, lessons[0], existingNodeIds, emit);
+          const graphResult = await graphAgent(topic, allLessons[0], existingNodeIds, emit);
           newNodes = graphResult.newNodes;
           newEdges = graphResult.newEdges;
         } catch {
@@ -198,8 +221,8 @@ export async function POST(req: Request) {
       }
 
       // Cache first lesson for quick replay
-      responseCache.set(cacheKey, { lesson: lessons[0], nodes: newNodes, edges: newEdges });
-      queueMemoryWrite({ sid, topic, topicId, sources, lessons, metrics, emit });
+      responseCache.set(cacheKey, { lesson: allLessons[0], nodes: newNodes, edges: newEdges });
+      queueMemoryWrite({ sid, topic, topicId, sources, lessons: allLessons, metrics, emit });
 
       // ⑧ Pipeline complete
       emit({ type: "pipeline.complete", totalMs: Date.now() - start });
