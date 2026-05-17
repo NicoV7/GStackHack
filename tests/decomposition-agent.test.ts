@@ -56,15 +56,30 @@ describe("Decomposition Agent", () => {
 
     const result = await decompositionAgent("Derivatives", sources, profile, emit);
 
-    expect(result.plans).toHaveLength(3);
+    expect(result.plans).toHaveLength(4);
     expect(result.plans.map((plan) => plan.subTopic)).toEqual([
-      "Derivatives - Core idea",
-      "Derivatives - Worked example",
-      "Derivatives - Common mistake",
+      "Limits",
+      "Derivatives",
+      "Chain Rule",
+      "Product Rule",
     ]);
   });
 
-  it("over-wide decompositions fall back to the bounded demo-speed pathway", async () => {
+  it("local fallback expands broad searches into related topic nodes", async () => {
+    vi.stubEnv("ENABLE_LLM_DECOMPOSITION", "false");
+
+    const result = await decompositionAgent("calculus", sources, profile, emit);
+
+    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
+      "Limits",
+      "Derivatives",
+      "Chain Rule",
+      "Product Rule",
+    ]);
+    expect(result.plans.some((plan) => /core idea|worked example|common mistake/i.test(plan.subTopic))).toBe(false);
+  });
+
+  it("falls back to related-topic presets when LLM returns too many plans", async () => {
     mockLlmChat.mockResolvedValue(JSON.stringify({
       plans: Array.from({ length: 5 }, (_, index) => ({
         subTopic: `Branch ${index + 1}`,
@@ -74,15 +89,13 @@ describe("Decomposition Agent", () => {
       })),
     }));
 
-    const result = await decompositionAgent("Derivatives", sources, profile, emit);
+    // Sources contain "derivatives" which matches the calculus preset — preset always wins
+    const result = await decompositionAgent("Quantum Mechanics", sources, profile, emit);
 
-    expect(result.plans).toHaveLength(3);
-    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
-      "Derivatives - Core idea",
-      "Derivatives - Worked example",
-      "Derivatives - Common mistake",
-    ]);
-    expect(events.at(-1)).toEqual({ type: "decomposition.complete", count: 3 });
+    expect(result.plans).toHaveLength(4);
+    // Preset matches because source excerpt contains "derivatives"
+    expect(result.plans[0].subTopic).toBe("Limits");
+    expect(events.at(-1)).toEqual({ type: "decomposition.complete", count: 4 });
   });
 
   it("emits SSE events in order: decomposition.started → plan_created (per plan) → decomposition.complete", async () => {
