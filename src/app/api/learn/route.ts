@@ -22,16 +22,23 @@ const DEFAULT_PROFILE = {
 const GBRAIN_READ_TIMEOUT_MS = Number(process.env.GBRAIN_READ_TIMEOUT_MS || 1500);
 const GBRAIN_WRITE_TIMEOUT_MS = Number(process.env.GBRAIN_WRITE_TIMEOUT_MS || 2500);
 const MAX_INLINE_LESSONS = Number(process.env.MAX_INLINE_LESSONS || 1);
+const PARALLEL_LESSONS = process.env.PARALLEL_LESSONS === "true";
 let memoryWriteQueue: Promise<unknown> = Promise.resolve();
 
 export async function POST(req: Request) {
-  const { topic, sessionId = "anonymous", nodeId, mode, existingNodes = [] } = (await req.json()) as {
+  const body = (await req.json()) as {
     topic: string;
     sessionId?: string;
     nodeId?: string;
     mode?: "full" | "single";
     existingNodes?: ExistingLessonNode[];
+    clientMemory?: {
+      profile?: Partial<LearnerProfile>;
+      context?: string[];
+    };
   };
+  const { topic, sessionId = "anonymous", nodeId, mode, existingNodes = [] } = body;
+  const clientMemory = normalizeClientMemory(body.clientMemory);
   const normalizedTopic = topic.trim().toLowerCase();
   const topicId = slugTopic(normalizedTopic);
   const sid = safeSessionId(sessionId);
@@ -50,7 +57,7 @@ export async function POST(req: Request) {
 
       const memoryStart = Date.now();
       const memory = await withTimeout(
-        loadMemory(sid, topic, existingNodes),
+        loadMemory(sid, topic, existingNodes, clientMemory),
         GBRAIN_READ_TIMEOUT_MS,
         { profile: DEFAULT_PROFILE, context: [] as string[], online: false }
       );
@@ -133,15 +140,34 @@ export async function POST(req: Request) {
 
       const lessons: Lesson[] = [];
       const lessonStart = Date.now();
-      for (let i = 0; i < effectivePlans.length; i++) {
-        if (lessons.length >= MAX_INLINE_LESSONS) break;
+
+      // Build list of lessons to generate (respecting MAX_INLINE_LESSONS and existing)
+      const toGenerate: Array<{ plan: typeof effectivePlans[0]; nodeId: string; context: typeof planContext[0] }> = [];
+      for (let i = 0; i < effectivePlans.length && toGenerate.length < MAX_INLINE_LESSONS; i++) {
         const targetNode = existingById.get(planNodeIds[i]);
         if (targetNode?.hasLesson) continue;
-        try {
-          const lesson = await lessonAgent(effectivePlans[i].subTopic, sources, emit, planNodeIds[i], planContext[i]);
-          lessons.push(lesson);
-        } catch {
-          // Lesson failed — skip it, continue with next
+        toGenerate.push({ plan: effectivePlans[i], nodeId: planNodeIds[i], context: planContext[i] });
+      }
+
+      if (PARALLEL_LESSONS) {
+        // Parallel: local Ollama with plenty of resources
+        const results = await Promise.allSettled(
+          toGenerate.map(({ plan, nodeId, context }) =>
+            lessonAgent(plan.subTopic, sources, emit, nodeId, context)
+          )
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled") lessons.push(r.value);
+        }
+      } else {
+        // Sequential: shared/remote Ollama with limited resources
+        for (const { plan, nodeId, context } of toGenerate) {
+          try {
+            const lesson = await lessonAgent(plan.subTopic, sources, emit, nodeId, context);
+            lessons.push(lesson);
+          } catch {
+            // Lesson failed — skip it, continue with next
+          }
         }
       }
       metrics.lesson_generation_ms = Date.now() - lessonStart;
@@ -190,14 +216,50 @@ export async function POST(req: Request) {
 async function loadMemory(
   sid: string,
   topic: string,
-  existingNodes: ExistingLessonNode[]
+  existingNodes: ExistingLessonNode[],
+  clientMemory: { profile: LearnerProfile; context: string[]; hasMemory: boolean }
 ): Promise<{ profile: LearnerProfile; context: string[]; online: boolean }> {
+  if (clientMemory.hasMemory || process.env.DISABLE_GBRAIN === "true") {
+    return {
+      profile: clientMemory.profile,
+      context: clientMemory.context,
+      online: true,
+    };
+  }
+
   const [profile, context] = await Promise.all([
     getProfile(sid),
     queryContext(sid, [topic, ...existingNodes.map((node) => node.topic)].join(" ")),
   ]);
 
   return { profile, context, online: !getGbrainDiagnostic().lastError };
+}
+
+function normalizeClientMemory(input: unknown): { profile: LearnerProfile; context: string[]; hasMemory: boolean } {
+  const value = input && typeof input === "object"
+    ? input as { profile?: Partial<LearnerProfile>; context?: unknown }
+    : {};
+  const profile = value.profile || {};
+  const context = Array.isArray(value.context)
+    ? value.context.filter((item): item is string => typeof item === "string").map((item) => item.slice(0, 600)).slice(-16)
+    : [];
+  const visualPreference = profile.visualPreference && ["graphs", "diagrams", "animations", "examples"].includes(profile.visualPreference)
+    ? profile.visualPreference
+    : DEFAULT_PROFILE.visualPreference;
+  const languageLevel = profile.languageLevel && ["beginner", "intermediate", "advanced"].includes(profile.languageLevel)
+    ? profile.languageLevel
+    : DEFAULT_PROFILE.languageLevel;
+
+  return {
+    profile: {
+      languageLevel,
+      visualPreference,
+      weakAreas: Array.isArray(profile.weakAreas) ? profile.weakAreas.filter(Boolean).map(String).slice(0, 12) : [],
+      completedTopics: Array.isArray(profile.completedTopics) ? profile.completedTopics.filter(Boolean).map(String).slice(0, 24) : [],
+    },
+    context,
+    hasMemory: context.length > 0 || Boolean(profile.weakAreas?.length) || Boolean(profile.completedTopics?.length),
+  };
 }
 
 function queueMemoryWrite(args: {
@@ -209,6 +271,11 @@ function queueMemoryWrite(args: {
   metrics: Record<string, number | string>;
   emit: (event: SSEEvent) => void;
 }) {
+  if (process.env.DISABLE_GBRAIN === "true") {
+    args.emit({ type: "gbrain.memory_written", topic: args.topic, source: "local" });
+    return;
+  }
+
   args.emit({ type: "gbrain.memory_queued", topic: args.topic });
   memoryWriteQueue = memoryWriteQueue
     .catch(() => false)
