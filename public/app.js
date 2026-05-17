@@ -1150,79 +1150,49 @@ if (restoreGraphSnapshot()) {
   const container = document.getElementById("heroNodesPreview");
   if (!svg || !container) return;
 
-  // Mini graph state for the hero preview
-  const RING_RADIUS = 220;
-  let nodes = [];    // { id, label, status, x, y }
-  let edges = [];    // { a, b, prereq }
-  let focusIdx = 0; // index in nodes[] that sits at center
+  // Nodes placed at fixed % positions — corners + sides, never center, never off-screen.
+  // pct values are [left%, top%] of the container.
+  const NODE_SLOTS = [
+    [0.10, 0.14],  // top-left
+    [0.88, 0.12],  // top-right
+    [0.06, 0.52],  // mid-left
+    [0.92, 0.50],  // mid-right
+    [0.18, 0.84],  // bottom-left
+    [0.80, 0.82],  // bottom-right
+  ];
 
-  // Initial graph: Derivatives topic
+  let nodes = [];    // { id, label, status, slotIdx }
+  let edges = [];    // { a, b }
+
   function initGraph() {
     nodes = [
-      { id: "n0", label: "Derivatives",   status: "focus" },
-      { id: "n1", label: "Limits",        status: "idle"  },
-      { id: "n2", label: "Slope",         status: "idle"  },
-      { id: "n3", label: "Chain rule",    status: "idle"  },
-      { id: "n4", label: "Product rule",  status: "idle"  },
-      { id: "n5", label: "Functions",     status: "idle"  },
+      { id: "n0", label: "Derivatives",  status: "focus",     slotIdx: 0 },
+      { id: "n1", label: "Limits",       status: "idle",      slotIdx: 1 },
+      { id: "n2", label: "Slope",        status: "idle",      slotIdx: 2 },
+      { id: "n3", label: "Chain rule",   status: "idle",      slotIdx: 3 },
+      { id: "n4", label: "Product rule", status: "idle",      slotIdx: 4 },
+      { id: "n5", label: "Functions",    status: "idle",      slotIdx: 5 },
     ];
     edges = [
       { a: "n0", b: "n1" }, { a: "n0", b: "n2" },
       { a: "n0", b: "n3" }, { a: "n0", b: "n4" },
       { a: "n3", b: "n5" }, { a: "n4", b: "n5" },
     ];
-    focusIdx = 0;
-    computePositions();
     renderHeroGraph(true);
   }
 
-  function computePositions() {
-    const focus = nodes[focusIdx];
-    // BFS from focus to assign rings
-    const rings = new Map([[focus.id, 0]]);
-    const queue = [focus.id];
-    while (queue.length) {
-      const cur = queue.shift();
-      const ring = rings.get(cur);
-      edges.forEach(({ a, b }) => {
-        const neighbor = a === cur ? b : b === cur ? a : null;
-        if (neighbor && !rings.has(neighbor)) {
-          rings.set(neighbor, ring + 1);
-          queue.push(neighbor);
-        }
-      });
-    }
-    // Group by ring
-    const byRing = new Map();
-    nodes.forEach((n) => {
-      const r = rings.get(n.id) ?? 1;
-      if (!byRing.has(r)) byRing.set(r, []);
-      byRing.get(r).push(n);
-    });
-    // Assign x, y
-    byRing.forEach((group, ring) => {
-      if (ring === 0) { group[0].x = 0; group[0].y = 0; return; }
-      const count = group.length;
-      const radius = RING_RADIUS * ring;
-      const baseAngle = ring % 2 === 0 ? 0 : -Math.PI / 2;
-      group.forEach((n, i) => {
-        const angle = baseAngle + (2 * Math.PI * i) / count;
-        n.x = Math.round(radius * Math.cos(angle));
-        n.y = Math.round(radius * Math.sin(angle));
-      });
-    });
+  function getNodePx(n) {
+    const w = container.offsetWidth;
+    const h = container.offsetHeight;
+    const [lp, tp] = NODE_SLOTS[n.slotIdx] || [0.5, 0.5];
+    return { x: Math.round(w * lp), y: Math.round(h * tp) };
   }
 
   function renderHeroGraph(initial = false) {
-    const w = container.offsetWidth;
-    const h = container.offsetHeight;
-    const cx = w / 2;
-    // Push the graph center toward the top so ring nodes spread to sides/corners
-    // and leave the vertical middle clear for the search bar
-    const cy = h * 0.35;
 
     // Position DOM nodes
     nodes.forEach((n, i) => {
+      const { x, y } = getNodePx(n);
       let el = document.getElementById("h_" + n.id);
       if (!el) {
         el = document.createElement("div");
@@ -1246,8 +1216,8 @@ if (restoreGraphSnapshot()) {
         });
       }
       el.textContent = n.label;
-      el.style.left = `${cx + n.x}px`;
-      el.style.top  = `${cy + n.y}px`;
+      el.style.left = `${x}px`;
+      el.style.top  = `${y}px`;
 
       // Status classes
       el.classList.remove("root", "done", "hero-prereq");
@@ -1263,17 +1233,19 @@ if (restoreGraphSnapshot()) {
     });
 
     // Redraw edges after position transition
-    setTimeout(() => drawHeroEdgesSvg(cx, cy), initial ? 500 : 340);
+    setTimeout(() => drawHeroEdgesSvg(), initial ? 500 : 340);
   }
 
-  function drawHeroEdgesSvg(cx, cy) {
+  function drawHeroEdgesSvg() {
     const nodeMap = new Map(nodes.map((n) => [n.id, n]));
     svg.innerHTML = edges.map(({ a, b, prereq }, i) => {
       const na = nodeMap.get(a);
       const nb = nodeMap.get(b);
       if (!na || !nb) return "";
-      const x1 = cx + na.x, y1 = cy + na.y;
-      const x2 = cx + nb.x, y2 = cy + nb.y;
+      const pa = getNodePx(na);
+      const pb = getNodePx(nb);
+      const x1 = pa.x, y1 = pa.y;
+      const x2 = pb.x, y2 = pb.y;
       const len = Math.hypot(x2 - x1, y2 - y1);
       const color = prereq ? "rgba(217,119,6,0.5)" : "rgba(242,240,220,0.18)";
       const dash  = prereq ? "4 3" : "none";
@@ -1305,23 +1277,21 @@ if (restoreGraphSnapshot()) {
       if (newFocus) {
         nodes.forEach((x) => { if (x.status === "focus") x.status = "completed"; });
         newFocus.status = "focus";
-        focusIdx = nodes.indexOf(newFocus);
       }
     }
-    computePositions();
     renderHeroGraph();
   }
 
   function injectPrereq(label, targetId) {
+    // Pick an unused slot (prefer corners not yet taken)
+    const usedSlots = new Set(nodes.map((x) => x.slotIdx));
+    const freeSlot = NODE_SLOTS.findIndex((_, i) => !usedSlots.has(i));
+    const slotIdx = freeSlot >= 0 ? freeSlot : 0;
     const prereqId = "prereq_" + Date.now();
-    nodes.push({ id: prereqId, label, status: "prereq", x: 0, y: 0 });
+    nodes.push({ id: prereqId, label, status: "prereq", slotIdx });
     edges.push({ a: prereqId, b: targetId, prereq: true });
-    // Shift focus to prereq
     nodes.forEach((x) => { if (x.status === "focus") x.status = "idle"; });
-    const pn = nodes.find((x) => x.id === prereqId);
-    pn.status = "focus";
-    focusIdx = nodes.indexOf(pn);
-    computePositions();
+    nodes.find((x) => x.id === prereqId).status = "focus";
     renderHeroGraph();
   }
 
