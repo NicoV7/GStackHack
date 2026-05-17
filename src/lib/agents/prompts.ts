@@ -2,7 +2,11 @@ export const LESSON_SYSTEM_PROMPT = `You write short lessons. Output JSON only.
 
 {"title":"string","content":"string","quiz":[{"id":"q1","text":"string","options":[{"label":"string","correct":true},{"label":"string","correct":false},{"label":"string","correct":false}],"prerequisiteTopic":"string"}]}
 
-Rules: content is 2 short paragraphs (50-80 words max). One quiz question with 3 options. No markdown. JSON only.`;
+Rules:
+- title must be the clean concept name only (e.g. "Chain Rule", "Derivatives", "Limits") — never include the parent topic, dashes, or qualifiers like "derivatives - Applications"
+- content is 2 short paragraphs (50-80 words max)
+- One quiz question with 3 options
+- No markdown. JSON only.`;
 
 export const GRAPH_SYSTEM_PROMPT = `You are a knowledge graph architect for LearnGraph.
 
@@ -60,7 +64,7 @@ Output valid JSON:
 {
   "plans": [
     {
-      "subTopic": "string - specific sub-concept",
+      "subTopic": "string - clean concept name only, e.g. 'Chain Rule' not 'Derivatives - Chain Rule'",
       "focus": "string - what this micro-lesson teaches",
       "visualStyle": "graph|diagram|animation|example",
       "prerequisiteOf": "string|null - which other sub-topic depends on this"
@@ -70,6 +74,7 @@ Output valid JSON:
 
 Rules:
 - Order from foundational to advanced
+- subTopic must be a clean, standalone concept name — never prefix it with the parent topic or use dashes as separators
 - Each plan should be self-contained but reference prerequisites
 - Adapt complexity to the learner's level
 - Output ONLY the JSON object, no markdown fences, no explanation`;
