@@ -26,6 +26,9 @@ type StoredProfile = LearnerProfile & {
 };
 
 let clientP: Promise<Client> | null = null;
+let oauthToken:
+  | { accessToken: string; expiresAt: number }
+  | null = null;
 
 export function safeSessionId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "anonymous";
@@ -37,6 +40,12 @@ function gbrainUrl(): string | undefined {
 
 function gbrainSharedSecret(): string | undefined {
   return process.env.GBRAIN_SHARED_SECRET?.trim() || undefined;
+}
+
+function gbrainClientCredentials(): { id: string; secret: string } | null {
+  const id = process.env.GBRAIN_CLIENT_ID?.trim();
+  const secret = process.env.GBRAIN_CLIENT_SECRET?.trim();
+  return id && secret ? { id, secret } : null;
 }
 
 function allowLocalCliFallback(): boolean {
@@ -94,10 +103,8 @@ async function getClient(): Promise<Client> {
   if (!url) throw new Error("GBRAIN_URL is not configured");
   if (!clientP) {
     clientP = (async () => {
-      const secret = gbrainSharedSecret();
-      const headers = secret
-        ? { Authorization: `Bearer ${secret}` }
-        : undefined;
+      const token = await gbrainBearerToken(url);
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const transport = new StreamableHTTPClientTransport(new URL("/mcp", url), {
         requestInit: headers ? { headers } : undefined,
       });
@@ -107,6 +114,38 @@ async function getClient(): Promise<Client> {
     })();
   }
   return clientP;
+}
+
+async function gbrainBearerToken(url: string): Promise<string | undefined> {
+  const credentials = gbrainClientCredentials();
+  if (credentials) {
+    const now = Date.now();
+    if (oauthToken && oauthToken.expiresAt > now + 60_000) return oauthToken.accessToken;
+
+    const params = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: credentials.id,
+      client_secret: credentials.secret,
+      scope: "read write",
+    });
+    const res = await fetch(new URL("/token", url), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+    if (!res.ok) {
+      throw new Error(`GBrain token error: ${res.status} ${await res.text()}`);
+    }
+    const data = await res.json() as { access_token?: string; expires_in?: number };
+    if (!data.access_token) throw new Error("GBrain token response missing access_token");
+    oauthToken = {
+      accessToken: data.access_token,
+      expiresAt: now + Math.max(60, data.expires_in || 3600) * 1000,
+    };
+    return oauthToken.accessToken;
+  }
+
+  return gbrainSharedSecret();
 }
 
 async function callMcp(name: string, args: Record<string, unknown>) {
