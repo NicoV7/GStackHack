@@ -121,6 +121,7 @@ const nodeLessonRequests = new Set();
 // --- Session Identity ---
 const SESSION_ID_STORAGE_KEY = "learnGraphSessionId";
 const MEMORY_STORAGE_KEY = "learnGraphMemoryV1";
+const GRAPH_STORAGE_KEY = "learnGraphSnapshotV1";
 const learnGraphSessionId = getOrCreateSessionId();
 let learnGraphMemory = loadPersistentMemory();
 
@@ -271,6 +272,123 @@ function buildClientMemoryPayload() {
   return { profile, context };
 }
 
+function saveGraphSnapshot() {
+  const nodes = Array.from(GraphState.nodes.values());
+  if (nodes.length === 0) return;
+
+  const snapshot = {
+    version: 1,
+    currentTopic,
+    currentLesson,
+    visibleSourceCount,
+    rootId: GraphState.rootId,
+    focusId: GraphState.focusId,
+    activeNodeId: GraphState.activeNodeId,
+    nodes: nodes.map(serializeGraphNode),
+    edges: GraphState.edges.map((edge) => ({ ...edge })),
+    savedAt: new Date().toISOString(),
+  };
+
+  try {
+    localStorage.setItem(GRAPH_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Keep the live graph even if storage is unavailable or full.
+  }
+}
+
+function loadGraphSnapshot() {
+  try {
+    const raw = localStorage.getItem(GRAPH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.nodes)) return null;
+    return {
+      currentTopic: typeof parsed.currentTopic === "string" ? parsed.currentTopic : "",
+      currentLesson: parsed.currentLesson || null,
+      visibleSourceCount: Number.isFinite(parsed.visibleSourceCount) ? parsed.visibleSourceCount : 0,
+      rootId: typeof parsed.rootId === "string" ? parsed.rootId : parsed.nodes[0]?.id,
+      focusId: typeof parsed.focusId === "string" ? parsed.focusId : parsed.rootId,
+      activeNodeId: typeof parsed.activeNodeId === "string" ? parsed.activeNodeId : parsed.rootId,
+      nodes: parsed.nodes.filter(isStoredGraphNode),
+      edges: Array.isArray(parsed.edges) ? parsed.edges.filter(isStoredGraphEdge) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function restoreGraphSnapshot() {
+  const snapshot = loadGraphSnapshot();
+  if (!snapshot || snapshot.nodes.length === 0) return false;
+
+  GraphState.reset();
+  const nodeIds = new Set(snapshot.nodes.map((node) => node.id));
+  GraphState.rootId = nodeIds.has(snapshot.rootId) ? snapshot.rootId : snapshot.nodes[0].id;
+  GraphState.focusId = nodeIds.has(snapshot.focusId) ? snapshot.focusId : GraphState.rootId;
+  GraphState.activeNodeId = nodeIds.has(snapshot.activeNodeId) ? snapshot.activeNodeId : GraphState.focusId;
+  GraphState.edges = snapshot.edges;
+  snapshot.nodes.forEach((node) => {
+    GraphState.nodes.set(node.id, node);
+  });
+
+  currentTopic = snapshot.currentTopic || GraphState.nodes.get(GraphState.rootId)?.topic || "";
+  visibleSourceCount = snapshot.visibleSourceCount || 0;
+  currentLesson = snapshot.currentLesson
+    || GraphState.nodes.get(GraphState.activeNodeId)?.lesson
+    || snapshot.nodes.find((node) => node.lesson)?.lesson
+    || null;
+
+  if (subjectInput && currentTopic) subjectInput.value = currentTopic;
+  if (graphEmpty) graphEmpty.classList.add("hidden");
+  if (pipelineStatus) pipelineStatus.textContent = "Restored local graph";
+  setAppState("app");
+  GraphState._scheduleRender(true);
+  updateStats();
+  updateSourceStats(0);
+  renderGallery();
+
+  const activeNode = GraphState.nodes.get(GraphState.activeNodeId);
+  if (activeNode?.lesson) {
+    renderLessonPanel(activeNode.lesson, activeNode.topic);
+  } else if (activeNode) {
+    renderLessonPlaceholder(activeNode);
+  }
+
+  return true;
+}
+
+function serializeGraphNode(node) {
+  return {
+    id: node.id,
+    topic: node.topic,
+    status: node.status,
+    position: node.position || { x: 0, y: 0 },
+    lesson: node.lesson ? serializeLesson(node.lesson) : null,
+  };
+}
+
+function serializeLesson(lesson) {
+  return {
+    ...lesson,
+    sources: Array.isArray(lesson.sources) ? lesson.sources.slice(0, 5) : [],
+  };
+}
+
+function isStoredGraphNode(node) {
+  return node
+    && typeof node.id === "string"
+    && typeof node.topic === "string"
+    && typeof node.status === "string";
+}
+
+function isStoredGraphEdge(edge) {
+  return edge
+    && typeof edge.id === "string"
+    && typeof edge.source === "string"
+    && typeof edge.target === "string"
+    && typeof edge.type === "string";
+}
+
 // --- Fallback concept seeds (used when API is unreachable) ---
 const fallbackSeeds = {
   "chain rule": ["Function composition", "Local slope", "Outer change", "Inner change", "Chain rule", "Product rule"],
@@ -291,6 +409,7 @@ GraphState.init(
     }
     openLessonDrawer();
     renderGallery();
+    saveGraphSnapshot();
   }
 );
 
@@ -482,6 +601,7 @@ function handleQuizAnswer(btn, lesson) {
     addAgentEvent("graph", `${GraphState.nodes.get(completedId)?.topic || currentTopic} learned`, "done");
     updateStats();
     renderGallery();
+    saveGraphSnapshot();
 
     // Auto-open lesson for the newly focused node
     if (nextId) {
@@ -508,6 +628,7 @@ function handleQuizAnswer(btn, lesson) {
       question,
     });
     triggerRewire(question, btn.textContent);
+    saveGraphSnapshot();
   }
 }
 
@@ -569,6 +690,7 @@ function handleDeterministicRewire(question) {
   addAgentEvent("graph", `Prerequisite pulled in: ${prereqTopic}`, "done");
   updateStats();
   renderGallery();
+  saveGraphSnapshot();
 
   // Open the prerequisite lesson so the learner sees what to do next
   setTimeout(() => {
@@ -614,6 +736,7 @@ function handleSSEEvent(event) {
         renderGallery();
         // Auto-open the drawer when the first lesson arrives
         if (isFirstLesson) openLessonDrawer();
+        saveGraphSnapshot();
       }
       break;
     case "graph.node_added":
@@ -621,10 +744,12 @@ function handleSSEEvent(event) {
       GraphState.addNode(event.node);
       updateStats();
       renderGallery();
+      saveGraphSnapshot();
       break;
     case "graph.edge_added":
       GraphState.addEdge(event.edge);
       updateStats();
+      saveGraphSnapshot();
       break;
     case "graph.prerequisite_suggested":
       GraphState.addPrerequisite(
@@ -634,6 +759,7 @@ function handleSSEEvent(event) {
       addAgentEvent("graph", `Prerequisite: ${event.node.topic} — ${event.reason || ""}`, "done");
       updateStats();
       renderGallery();
+      saveGraphSnapshot();
       break;
     case "decomposition.started":
       addAgentEvent("graph", `Planning branches for "${event.topic || currentTopic}"`, "working");
@@ -666,6 +792,7 @@ function handleSSEEvent(event) {
       addAgentEvent("info", `Pipeline complete (${event.totalMs}ms)`, "done");
       pipelineRunning = false;
       if (pipelineStatus) pipelineStatus.textContent = `Done in ${(event.totalMs / 1000).toFixed(1)}s`;
+      saveGraphSnapshot();
       break;
     case "pipeline.error":
       addAgentEvent("info", `Error: ${event.error}`, "error");
@@ -753,6 +880,7 @@ async function startPipeline(topic) {
   GraphState.addRootNode(topicId, topic, null);
   updateStats();
   renderGallery();
+  saveGraphSnapshot();
 
   addAgentEvent("info", `Starting pipeline for "${topic}"`, "working");
   addChatMessage("ai", `Building a graph for ${topic}. Watch the Browser, Lesson, and Graph agents populate the map.`);
@@ -832,6 +960,7 @@ function useFallbackData(topic) {
   });
   updateStats();
   renderGallery();
+  saveGraphSnapshot();
   if (pipelineStatus) pipelineStatus.textContent = "Fallback mode";
 }
 
@@ -892,6 +1021,7 @@ function renderGallery() {
       }
       openLessonDrawer();
       renderGallery();
+      saveGraphSnapshot();
     });
   });
 }
@@ -1007,8 +1137,12 @@ if (chatForm) {
   });
 }
 
-addChatMessage("ai", "Search a subject and I will research, write, map, quiz, and rewire the lesson graph.");
-renderGallery();
+if (restoreGraphSnapshot()) {
+  addChatMessage("ai", "Restored your local lesson graph.");
+} else {
+  addChatMessage("ai", "Search a subject and I will research, write, map, quiz, and rewire the lesson graph.");
+  renderGallery();
+}
 
 // ── Hero Graph: scripted demo of the real app behavior ────────────
 (function heroGraphDemo() {
