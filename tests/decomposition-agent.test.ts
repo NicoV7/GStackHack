@@ -15,7 +15,18 @@ describe("Decomposition Agent", () => {
   const emit = (event: SSEEvent) => events.push(event);
 
   const sources: Source[] = [
-    { title: "Khan Academy", url: "https://khan.org", excerpt: "Learn derivatives", relevance: 0.9 },
+    {
+      title: "Calculus 1 Review",
+      url: "https://example.com/calculus-review",
+      excerpt: "Limits in calculus explain what a function approaches. The definition of a derivative uses shrinking average change.",
+      relevance: 0.9,
+    },
+    {
+      title: "Understand Calculus",
+      url: "https://example.com/understand-calculus",
+      excerpt: "Basic integration techniques calculate area under the curve. Differential calculus studies change and integral calculus studies accumulation.",
+      relevance: 0.8,
+    },
   ];
 
   const profile: LearnerProfile = {
@@ -57,12 +68,13 @@ describe("Decomposition Agent", () => {
     const result = await decompositionAgent("Derivatives", sources, profile, emit);
 
     expect(result.plans).toHaveLength(4);
-    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
-      "Limits",
-      "Derivatives",
-      "Chain Rule",
-      "Product Rule",
-    ]);
+    const topics = result.plans.map((plan) => plan.subTopic).join(" ");
+    expect(topics).toMatch(/limit/i);
+    expect(topics).toMatch(/derivative/i);
+    expect(topics).toMatch(/integration|integral|area/i);
+    expect(result.plans.map((plan) => plan.subTopic)).not.toContain("Curve");
+    expect(result.plans.every((plan) => !/[.!?]$/.test(plan.subTopic))).toBe(true);
+    expect(topics).not.toMatch(/khan|academy|youtube|explanation/i);
   });
 
   it("local fallback expands broad searches into related topic nodes", async () => {
@@ -70,16 +82,16 @@ describe("Decomposition Agent", () => {
 
     const result = await decompositionAgent("calculus", sources, profile, emit);
 
-    expect(result.plans.map((plan) => plan.subTopic)).toEqual([
-      "Limits",
-      "Derivatives",
-      "Chain Rule",
-      "Product Rule",
-    ]);
+    const topics = result.plans.map((plan) => plan.subTopic).join(" ");
+    expect(topics).toMatch(/limit/i);
+    expect(topics).toMatch(/derivative/i);
+    expect(topics).toMatch(/integration|integral|area/i);
+    expect(result.plans.map((plan) => plan.subTopic)).not.toContain("Curve");
+    expect(result.plans.every((plan) => !/[.!?]$/.test(plan.subTopic))).toBe(true);
     expect(result.plans.some((plan) => /core idea|worked example|common mistake/i.test(plan.subTopic))).toBe(false);
   });
 
-  it("falls back to related-topic presets when LLM returns too many plans", async () => {
+  it("falls back to source-derived related topics when LLM returns too many plans", async () => {
     mockLlmChat.mockResolvedValue(JSON.stringify({
       plans: Array.from({ length: 5 }, (_, index) => ({
         subTopic: `Branch ${index + 1}`,
@@ -89,12 +101,10 @@ describe("Decomposition Agent", () => {
       })),
     }));
 
-    // Sources contain "derivatives" which matches the calculus preset — preset always wins
     const result = await decompositionAgent("Quantum Mechanics", sources, profile, emit);
 
     expect(result.plans).toHaveLength(4);
-    // Preset matches because source excerpt contains "derivatives"
-    expect(result.plans[0].subTopic).toBe("Limits");
+    expect(result.plans.map((plan) => plan.subTopic).join(" ")).toMatch(/limit|derivative|integration|integral|area/i);
     expect(events.at(-1)).toEqual({ type: "decomposition.complete", count: 4 });
   });
 

@@ -9,7 +9,7 @@ import type { Lesson, GraphNode, GraphEdge, LearnerProfile, Source, SSEEvent } f
 
 const responseCache = new Map<
   string,
-  { lesson: Lesson; nodes: GraphNode[]; edges: GraphEdge[] }
+  { sources: Source[]; lessons: Array<{ nodeId?: string; lesson: Lesson }>; nodes: GraphNode[]; edges: GraphEdge[] }
 >();
 
 const DEFAULT_PROFILE = {
@@ -73,12 +73,14 @@ export async function POST(req: Request) {
       const cached = responseCache.get(cacheKey);
       if (cached) {
         emit({ type: "browser.searching", query: `${topic} (cached)` });
-        for (const source of cached.lesson.sources) emit({ type: "browser.source_found", source });
-        emit({ type: "lesson.writing", topic });
-        if (cached.lesson.visualization) emit({ type: "lesson.visualization", description: cached.lesson.visualization });
-        emit({ type: "lesson.quiz_generated", lesson: cached.lesson });
         for (const node of cached.nodes) emit({ type: "graph.node_added", node });
         for (const edge of cached.edges) emit({ type: "graph.edge_added", edge });
+        for (const source of cached.sources) emit({ type: "browser.source_found", source });
+        for (const item of cached.lessons) {
+          emit({ type: "lesson.writing", topic: item.lesson.title });
+          if (item.lesson.visualization) emit({ type: "lesson.visualization", description: item.lesson.visualization });
+          emit({ type: "lesson.quiz_generated", lesson: item.lesson, nodeId: item.nodeId });
+        }
         emit({ type: "pipeline.complete", totalMs: Date.now() - start });
         return;
       }
@@ -104,7 +106,11 @@ export async function POST(req: Request) {
       const rootLessonStart = Date.now();
       let rootLesson: Lesson | null = null;
       try {
-        rootLesson = await lessonAgent(topic, sources, emit, topicId);
+        rootLesson = await lessonAgent(topic, sources, emit, topicId, {
+          focus: rootLessonFocus(topic, sources),
+          visualStyle: memory.profile.visualPreference === "graphs" ? "graph" : "diagram",
+          prerequisiteOf: null,
+        });
       } catch {
         // Root lesson failed — will still decompose into branches
       }
@@ -141,7 +147,7 @@ export async function POST(req: Request) {
         emit({ type: "graph.edge_added", edge, source: memory.online ? "gbrain.related" : "related" });
       }
 
-      // ⑤ Generate the first missing lesson only. Branch lessons are generated on tap.
+      // ⑤ Generate missing branch lessons. Local demo generates every branch; production can cap work.
       const planContext = effectivePlans.map((plan, index) => ({
         focus: plan.focus,
         visualStyle: plan.visualStyle,
@@ -150,12 +156,15 @@ export async function POST(req: Request) {
         nextTopic: effectivePlans[index + 1]?.subTopic || plan.prerequisiteOf || undefined,
       }));
 
-      const lessons: Lesson[] = [];
+      const lessonRecords: Array<{ nodeId: string; lesson: Lesson }> = [];
       const lessonStart = Date.now();
+      const inlineLessonLimit = process.env.FAST_LOCAL_DEMO === "true"
+        ? effectivePlans.length
+        : MAX_INLINE_LESSONS;
 
       // Build list of lessons to generate (respecting MAX_INLINE_LESSONS and existing)
       const toGenerate: Array<{ plan: typeof effectivePlans[0]; nodeId: string; context: typeof planContext[0] }> = [];
-      for (let i = 0; i < effectivePlans.length && toGenerate.length < MAX_INLINE_LESSONS; i++) {
+      for (let i = 0; i < effectivePlans.length && toGenerate.length < inlineLessonLimit; i++) {
         const targetNode = existingById.get(planNodeIds[i]);
         if (targetNode?.hasLesson) continue;
         toGenerate.push({ plan: effectivePlans[i], nodeId: planNodeIds[i], context: planContext[i] });
@@ -164,19 +173,21 @@ export async function POST(req: Request) {
       if (PARALLEL_LESSONS) {
         // Parallel: local Ollama with plenty of resources
         const results = await Promise.allSettled(
-          toGenerate.map(({ plan, nodeId, context }) =>
-            lessonAgent(plan.subTopic, sources, emit, nodeId, context)
+          toGenerate.map(async ({ plan, nodeId, context }) => ({
+            nodeId,
+            lesson: await lessonAgent(plan.subTopic, sources, emit, nodeId, context),
+          })
           )
         );
         for (const r of results) {
-          if (r.status === "fulfilled") lessons.push(r.value);
+          if (r.status === "fulfilled") lessonRecords.push(r.value);
         }
       } else {
         // Sequential: shared/remote Ollama with limited resources
         for (const { plan, nodeId, context } of toGenerate) {
           try {
             const lesson = await lessonAgent(plan.subTopic, sources, emit, nodeId, context);
-            lessons.push(lesson);
+            lessonRecords.push({ nodeId, lesson });
           } catch {
             // Lesson failed — skip it, continue with next
           }
@@ -187,7 +198,7 @@ export async function POST(req: Request) {
       // Combine root + branch lessons
       const allLessons: Lesson[] = [];
       if (rootLesson) allLessons.push(rootLesson);
-      allLessons.push(...lessons);
+      allLessons.push(...lessonRecords.map((item) => item.lesson));
       metrics.cards_generated_count = allLessons.length;
       emitMetric("lesson_generation_ms", metrics.lesson_generation_ms, emit);
       emitMetric("cards_generated_count", allLessons.length, emit);
@@ -216,7 +227,11 @@ export async function POST(req: Request) {
 
       // Cache first lesson for quick replay
       responseCache.set(cacheKey, {
-        lesson: allLessons[0],
+        sources,
+        lessons: [
+          ...(rootLesson ? [{ nodeId: topicId, lesson: rootLesson }] : []),
+          ...lessonRecords,
+        ],
         nodes: [...pathway.nodes, ...newNodes],
         edges: [...pathway.edges, ...relatedEdges, ...newEdges],
       });
@@ -352,4 +367,50 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 
 function emitMetric(name: string, value: number | string, emit: (event: SSEEvent) => void) {
   emit({ type: "pipeline.metric", name, value });
+}
+
+function rootLessonFocus(topic: string, sources: Source[]): string {
+  const source = sources
+    .map((item) => {
+      const text = `${item.title} ${item.excerpt}`.toLowerCase();
+      let score = item.relevance || 0;
+      if (text.includes(topic.toLowerCase())) score += 2;
+      if (!/youtube|views|subscribers|thanks/.test(text)) score += 4;
+      if (/definition|meaning|comes from|small pieces|find how it changes|cuts|joins|rate of change|area under/i.test(text)) score += 6;
+      if (/love\/hate|agony|youtube|views|subscribers|thanks|finally understand/i.test(text)) score -= 8;
+      return { item, score };
+    })
+    .sort((a, b) => b.score - a.score)[0]?.item
+    || sources.find((item) => {
+    const text = `${item.title} ${item.excerpt}`.toLowerCase();
+    return text.includes(topic.toLowerCase()) && !/youtube|views|subscribers|thanks/i.test(text);
+  }) || sources[0];
+  const excerpt = source?.excerpt
+    .replace(/\s+/g, " ")
+    .replace(/^#+\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .trim();
+  const sentence = excerpt
+    ?.split(/[.!?]/)
+    .map((part) => part.trim().replace(/^#+\s*/, ""))
+    .filter((part) => part.length > 25)
+    .sort((a, b) => sentenceScore(b) - sentenceScore(a))[0]
+    || excerpt?.split(/[.!?]/)[0]?.trim().replace(/^#+\s*/, "")
+    || "";
+
+  return sentence
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*$/g, "")
+    .slice(0, 180)
+    || `Define ${topic} using the clearest source-backed explanation.`;
+}
+
+function sentenceScore(sentence: string): number {
+  const text = sentence.toLowerCase();
+  let score = sentence.length > 40 ? 1 : 0;
+  if (/small pieces|find how it changes|joins|integrates|cuts|rate of change|area under/i.test(text)) score += 8;
+  if (/definition|meaning|comes from latin/.test(text)) score -= 2;
+  if (/love\/hate|agony|thanks|youtube|views|subscribers|you'll ever hear/.test(text)) score -= 8;
+  return score;
 }

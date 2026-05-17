@@ -76,12 +76,7 @@ function fallbackToCache(
     ? { ...cached, sources }
     : {
         title: topic,
-        content: [
-          `${plan?.focus || topic} is a fundamental concept worth understanding deeply. It connects to many areas and builds on prior knowledge you may already have.`,
-          plan?.nextTopic
-            ? `This concept is a stepping stone toward ${plan.nextTopic}. Once you grasp the core idea here, the next topic will click much faster.`
-            : `Take a moment to reflect on what you already know about ${topic}. Real understanding comes from connecting new ideas to familiar ones.`,
-        ].join("\n\n"),
+        content: fallbackContent(topic, sources, plan),
         visualization: `A ${plan?.visualStyle || "diagram"} showing the key relationship in ${topic}.`,
         quiz: [fallbackQuiz(topic, normalized, plan)],
         sources,
@@ -95,28 +90,40 @@ function fallbackToCache(
   return lesson;
 }
 
-function fallbackQuiz(topic: string, normalized: string, plan?: LessonPlanContext) {
-  const preset = fallbackQuizPreset(normalized);
-  if (preset) {
-    return {
-      id: `q-${normalized.replace(/[^a-z0-9]+/g, "-")}`,
-      ...preset,
-    };
-  }
+function fallbackContent(topic: string, sources: Source[], plan?: LessonPlanContext): string {
+  const focus = plan?.focus ? cleanLessonFocus(plan.focus, topic) : "";
+  const source = bestSourceForTopic(topic, sources);
+  const sourceFrame = cleanSourceExcerpt(source?.excerpt || "");
+  const first = focus
+    ? `${topic}: ${sentenceCase(focus)}.`
+    : sourceFrame
+      ? `${topic}: ${sourceFrame}.`
+      : `${topic} needs one clear definition before the graph can branch.`;
+  const second = plan?.nextTopic
+    ? `Use this card to connect ${topic} to ${plan.nextTopic}; the next node should feel like a continuation, not a new subject.`
+    : focus
+      ? `Use the visual to connect that relationship before branching into related cards.`
+    : source?.title
+      ? `The strongest source signal came from "${cleanSourceTitle(source.title)}", so this card starts there.`
+      : `The useful move is to name the relationship, then test it with one quick example.`;
 
+  return [first, second].join("\n\n");
+}
+
+function fallbackQuiz(topic: string, normalized: string, plan?: LessonPlanContext) {
   const focus = plan?.focus || `the main relationship in ${topic}`;
   const nextTopic = plan?.nextTopic || plan?.prerequisiteOf;
   const mode = plan?.visualStyle || "diagram";
-  const textByMode = {
-    graph: `On a graph of ${topic}, what should you pay attention to first?`,
-    diagram: `Which connection best explains ${topic}?`,
-    animation: `As ${topic} changes step by step, what should you watch?`,
-    example: `In a worked example for ${topic}, what should you track first?`,
-  };
+  const templates = [
+    `Which statement best captures ${topic}?`,
+    `What should this ${mode} make clear about ${topic}?`,
+    `What does ${topic} help you decide or explain?`,
+    `Which move would show that you understand ${topic}?`,
+  ];
 
   return {
     id: `q-${normalized.replace(/[^a-z0-9]+/g, "-")}`,
-    text: textByMode[mode],
+    text: templates[hashString(normalized) % templates.length],
     options: [
       { label: focus, correct: true },
       {
@@ -131,122 +138,101 @@ function fallbackQuiz(topic: string, normalized: string, plan?: LessonPlanContex
   };
 }
 
-function fallbackQuizPreset(normalized: string) {
-  if (normalized.includes("chain rule")) {
-    return {
-      text: "For sin(x^2), what must you multiply after differentiating the outside sine?",
-      options: [
-        { label: "The derivative of the inside, 2x", correct: true },
-        { label: "Only the derivative of sine", correct: false },
-        { label: "Only the exponent on x^2", correct: false },
-      ],
-      prerequisiteTopic: "Function Composition",
-    };
-  }
-
-  if (normalized.includes("product rule")) {
-    return {
-      text: "When differentiating f(x)g(x), which structure matches the product rule?",
-      options: [
-        { label: "f'(x)g(x) + f(x)g'(x)", correct: true },
-        { label: "f'(x)g'(x)", correct: false },
-        { label: "f(x) + g(x)", correct: false },
-      ],
-      prerequisiteTopic: "Derivatives",
-    };
-  }
-
-  if (normalized.includes("derivative")) {
-    return {
-      text: "What does a derivative tell you at one point on a curve?",
-      options: [
-        { label: "The instantaneous rate of change", correct: true },
-        { label: "The total area accumulated so far", correct: false },
-        { label: "The highest y-value on the graph", correct: false },
-      ],
-      prerequisiteTopic: "Limits",
-    };
-  }
-
-  if (normalized.includes("limit")) {
-    return {
-      text: "In a limit, what are you studying about the input?",
-      options: [
-        { label: "What the function approaches near a value", correct: true },
-        { label: "Only the function value exactly at that point", correct: false },
-        { label: "The largest number in the expression", correct: false },
-      ],
-      prerequisiteTopic: "Functions",
-    };
-  }
-
-  if (normalized.includes("integral")) {
-    return {
-      text: "What does a definite integral measure visually?",
-      options: [
-        { label: "Accumulated area under a curve", correct: true },
-        { label: "The slope at one exact point", correct: false },
-        { label: "The input where a graph crosses zero", correct: false },
-      ],
-      prerequisiteTopic: "Derivatives",
-    };
-  }
-
-  if (normalized.includes("activation function")) {
-    return {
-      text: "Why do neural networks use activation functions between layers?",
-      options: [
-        { label: "They add nonlinearity so layers can model complex patterns", correct: true },
-        { label: "They delete all negative examples from the dataset", correct: false },
-        { label: "They replace training with memorized answers", correct: false },
-      ],
-      prerequisiteTopic: "Perceptrons",
-    };
-  }
-
-  if (normalized.includes("backpropagation")) {
-    return {
-      text: "What is backpropagation moving backward through the network?",
-      options: [
-        { label: "Error signals used to update weights", correct: true },
-        { label: "Raw input pixels from the dataset", correct: false },
-        { label: "The final prediction without any loss", correct: false },
-      ],
-      prerequisiteTopic: "Loss Functions",
-    };
-  }
-
-  if (normalized.includes("dot product")) {
-    return {
-      text: "What does the dot product reveal about two vectors?",
-      options: [
-        { label: "How aligned their directions are", correct: true },
-        { label: "The area of a curved region", correct: false },
-        { label: "The probability of an event", correct: false },
-      ],
-      prerequisiteTopic: "Vector Components",
-    };
-  }
-
-  if (normalized.includes("conditional probability")) {
-    return {
-      text: "What changes in conditional probability?",
-      options: [
-        { label: "The likelihood after new information is known", correct: true },
-        { label: "The sample space disappears completely", correct: false },
-        { label: "Every outcome becomes equally likely", correct: false },
-      ],
-      prerequisiteTopic: "Sample Space",
-    };
-  }
-
-  return null;
-}
-
 function inferPrerequisiteTopic(normalized: string): string {
   if (normalized.includes("calculus")) return "Functions";
   if (normalized.includes("neural")) return "Weighted Inputs";
   if (normalized.includes("probability")) return "Sample Space";
   if (normalized.includes("vector")) return "Coordinate Plane";
+  if (normalized.includes("yc") || normalized.includes("startup")) return "User Problem";
   return "Foundations";
+}
+
+function cleanSourceExcerpt(excerpt: string): string {
+  const cleaned = excerpt
+    .replace(/\s+/g, " ")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/^#+\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/\bstep\s+by\s+step\s+tutorial\s+on\s+/gi, "")
+    .replace(/\bthis\s+(video|tutorial|lesson)\s+(shows|explains|covers)\s+/gi, "")
+    .trim()
+  const sentence = cleaned
+    .split(/[.!?]/)
+    .map((part) => part.trim().replace(/^#+\s*/, ""))
+    .filter((part) => !/love\/hate|agony of math education|thanks for|subscribers|views/i.test(part))
+    .find((part) => part.length > 35)
+    || cleaned.split(/[.!?]/)[0]?.trim().replace(/^#+\s*/, "")
+    || "";
+  return sentence.slice(0, 180);
+}
+
+function cleanLessonFocus(value: string, topic: string): string {
+  const cleaned = trimSentence(value)
+    .replace(/\bstep\s+by\s+step\s+tutorial\s+on\s+/gi, "")
+    .replace(/\bthis\s+(video|tutorial|lesson)\s+(shows|explains|covers)\s+/gi, "")
+    .replace(/^because\s+it\s+is\s+like\s+/i, "")
+    .replace(/^to\s+/i, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleanLeadingConnector(focusWindowForTopic(cleaned, topic) || cleaned);
+}
+
+function focusWindowForTopic(focus: string, topic: string): string {
+  const topicTokens = topic.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3);
+  if (topicTokens.length === 0) return "";
+
+  const words = focus.split(/\s+/).filter(Boolean);
+  const normalizedWords = words.map((word) => word.toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  const index = normalizedWords.findIndex((word) => topicTokens.some((token) => (
+    word === token || word.includes(token) || (word.length > 4 && token.includes(word))
+  )));
+  if (index < 0) return "";
+
+  const start = Math.max(0, index - 3);
+  const end = Math.min(words.length, index + 9);
+  return words.slice(start, end).join(" ").replace(/^[,;:\s]+|[,;:\s]+$/g, "");
+}
+
+function cleanLeadingConnector(value: string): string {
+  return value
+    .replace(/^because\s+it\s+is\s+like\s+/i, "")
+    .replace(/^to\s+/i, "")
+    .trim();
+}
+
+function bestSourceForTopic(topic: string, sources: Source[]): Source | undefined {
+  const tokens = topic.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 2);
+  return sources
+    .map((source) => ({
+      source,
+      score: tokens.filter((token) => `${source.title} ${source.excerpt}`.toLowerCase().includes(token)).length,
+    }))
+    .sort((a, b) => b.score - a.score)[0]?.source || sources[0];
+}
+
+function cleanSourceTitle(title: string): string {
+  return title
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\b(tutorial|explained|introduction|complete guide|beginner'?s guide|examples?|latest|video|videos?)\b/gi, "")
+    .replace(/[|:–—-]\s*(youtube|khan academy|geeksforgeeks|coursera|medium).*$/i, "")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function trimSentence(value: string): string {
+  return value.replace(/\s+/g, " ").trim().replace(/[.!?]+$/, "");
+}
+
+function sentenceCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
 }

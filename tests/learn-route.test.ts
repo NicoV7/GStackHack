@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DecompositionResult } from "@/lib/agents/decomposition-agent";
 import type { GraphAgentResult } from "@/lib/agents/graph-agent";
 import type { Lesson, SSEEvent, Source } from "@/lib/types";
@@ -124,6 +124,10 @@ describe("/api/learn", () => {
     mockTouchSession.mockResolvedValue(false);
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("skips duplicate lessons for existing pathway nodes that already have lesson content", async () => {
     mockDecompositionAgent.mockResolvedValue({
       plans: [
@@ -146,6 +150,10 @@ describe("/api/learn", () => {
       [source],
       expect.any(Function),
       expect.any(String),
+      expect.objectContaining({
+        focus: expect.any(String),
+        prerequisiteOf: null,
+      })
     );
     // Second call: Power Rule (Limits skipped)
     expect(mockLessonAgent).toHaveBeenCalledWith(
@@ -200,5 +208,29 @@ describe("/api/learn", () => {
     ))).toBe(true);
     expect(events.some((event) => event.type === "pipeline.error")).toBe(false);
     expect(events.at(-1)?.type).toBe("pipeline.complete");
+  });
+
+  it("generates every pathway lesson in fast local demo mode", async () => {
+    vi.stubEnv("FAST_LOCAL_DEMO", "true");
+    mockDecompositionAgent.mockResolvedValue({
+      plans: [
+        { subTopic: "Limits", focus: "Functions approaching a value", visualStyle: "diagram", prerequisiteOf: "Derivatives" },
+        { subTopic: "Derivatives", focus: "Instantaneous rate of change", visualStyle: "diagram", prerequisiteOf: "Area Under Curve" },
+        { subTopic: "Area Under Curve", focus: "Accumulated change", visualStyle: "example", prerequisiteOf: null },
+      ],
+    } satisfies DecompositionResult);
+
+    const response = await POST(request({
+      topic: "Calculus Local Demo All Lessons",
+      existingNodes: [],
+    }));
+    const events = await readEvents(response);
+
+    expect(mockLessonAgent).toHaveBeenCalledTimes(4);
+    expect(events.filter((event) => event.type === "lesson.quiz_generated")).toHaveLength(4);
+    expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "limits" }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "derivatives" }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "area-under-curve" }));
+    expect(events).toContainEqual(expect.objectContaining({ type: "pipeline.metric", name: "cards_generated_count", value: 4 }));
   });
 });

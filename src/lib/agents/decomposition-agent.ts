@@ -93,20 +93,20 @@ function templateDecomposition(topic: string, profile: LearnerProfile, sources: 
   return {
     plans: [
       {
-        subTopic: `${topic} - Core idea`,
-        focus: `The one mental model that makes ${topic} click`,
+        subTopic: `${titleCaseTopic(topic)} Foundations`,
+        focus: `Define ${topic} using the clearest source-backed explanation`,
         visualStyle,
-        prerequisiteOf: `${topic} - Worked example`,
+        prerequisiteOf: `${titleCaseTopic(topic)} Examples`,
       },
       {
-        subTopic: `${topic} - Worked example`,
-        focus: `Apply ${topic} to one concrete example`,
+        subTopic: `${titleCaseTopic(topic)} Examples`,
+        focus: `Apply ${topic} to one concrete case from the sources`,
         visualStyle: "example",
-        prerequisiteOf: `${topic} - Common mistake`,
+        prerequisiteOf: `${titleCaseTopic(topic)} Misconceptions`,
       },
       {
-        subTopic: `${topic} - Common mistake`,
-        focus: `The misconception most learners hit with ${topic}`,
+        subTopic: `${titleCaseTopic(topic)} Misconceptions`,
+        focus: `Separate the useful mental model from a common misconception about ${topic}`,
         visualStyle: "diagram",
         prerequisiteOf: null,
       },
@@ -123,97 +123,80 @@ function relatedTopicsFor(topic: string, sources: Source[]): Array<{
   focus: string;
   visualStyle?: "graph" | "diagram" | "animation" | "example";
 }> {
-  const haystack = [
-    topic,
-    ...sources.flatMap((source) => [source.title, source.excerpt]),
-  ].join(" ").toLowerCase();
-
-  for (const preset of RELATED_TOPIC_PRESETS) {
-    if (preset.keywords.some((keyword) => haystack.includes(keyword))) {
-      return preset.topics;
-    }
-  }
-
   return sourceDerivedTopics(topic, sources);
 }
-
-const RELATED_TOPIC_PRESETS: Array<{
-  keywords: string[];
-  topics: Array<{
-    topic: string;
-    focus: string;
-    visualStyle?: "graph" | "diagram" | "animation" | "example";
-  }>;
-}> = [
-  {
-    keywords: ["calculus", "derivative", "differentiation"],
-    topics: [
-      { topic: "Limits", focus: "How functions behave as inputs approach a point", visualStyle: "graph" },
-      { topic: "Derivatives", focus: "Instantaneous rate of change and tangent slope", visualStyle: "graph" },
-      { topic: "Chain Rule", focus: "Differentiating composite functions", visualStyle: "diagram" },
-      { topic: "Product Rule", focus: "Differentiating two multiplied functions", visualStyle: "example" },
-    ],
-  },
-  {
-    keywords: ["neural network", "neural networks", "deep learning"],
-    topics: [
-      { topic: "Perceptrons", focus: "How weighted inputs become a prediction", visualStyle: "diagram" },
-      { topic: "Activation Functions", focus: "Why nonlinear layers let networks model complex patterns", visualStyle: "graph" },
-      { topic: "Backpropagation", focus: "How errors flow backward to update weights", visualStyle: "animation" },
-      { topic: "Overfitting", focus: "Why a model can memorize instead of generalize", visualStyle: "example" },
-    ],
-  },
-  {
-    keywords: ["probability", "statistics"],
-    topics: [
-      { topic: "Sample Space", focus: "The complete set of possible outcomes", visualStyle: "diagram" },
-      { topic: "Conditional Probability", focus: "How new information changes likelihood", visualStyle: "diagram" },
-      { topic: "Bayes Rule", focus: "Updating beliefs from evidence", visualStyle: "example" },
-      { topic: "Expected Value", focus: "The long-run average of uncertain outcomes", visualStyle: "graph" },
-    ],
-  },
-  {
-    keywords: ["vector", "vectors", "linear algebra"],
-    topics: [
-      { topic: "Magnitude and Direction", focus: "Reading a vector as size plus orientation", visualStyle: "diagram" },
-      { topic: "Vector Components", focus: "Breaking motion into x and y parts", visualStyle: "diagram" },
-      { topic: "Dot Product", focus: "Measuring alignment between two vectors", visualStyle: "graph" },
-      { topic: "Basis Vectors", focus: "Changing the coordinate system used to describe space", visualStyle: "animation" },
-    ],
-  },
-  {
-    keywords: ["machine learning", "ml model", "classification", "regression"],
-    topics: [
-      { topic: "Training Data", focus: "Examples that teach the model what patterns matter", visualStyle: "diagram" },
-      { topic: "Loss Functions", focus: "A score for how wrong a model is", visualStyle: "graph" },
-      { topic: "Gradient Descent", focus: "Iteratively moving parameters toward lower loss", visualStyle: "animation" },
-      { topic: "Generalization", focus: "Performing well on examples the model has not seen", visualStyle: "example" },
-    ],
-  },
-];
 
 function sourceDerivedTopics(topic: string, sources: Source[]): Array<{
   topic: string;
   focus: string;
   visualStyle: "diagram" | "example";
 }> {
-  const candidates = sources
-    .map((source) => cleanSourceTitle(source.title))
-    .filter((title) => title.length > 0)
-    .filter((title) => !sameTopic(title, topic));
+  const scored = new Map<string, { score: number; focus: string; count: number }>();
+  const addCandidate = (candidate: string, focus: string, score: number) => {
+    const clean = cleanCandidate(candidate, topic);
+    if (!isUsefulCandidate(clean, topic)) return;
+    const existing = scored.get(clean);
+    if (existing) {
+      scored.set(clean, {
+        score: existing.score + score + 2,
+        focus: existing.focus.length >= focus.length ? existing.focus : focus,
+        count: existing.count + 1,
+      });
+    } else {
+      scored.set(clean, { score, focus, count: 1 });
+    }
+  };
 
-  return Array.from(new Set(candidates)).slice(0, 4).map((title, index) => ({
-    topic: title,
-    focus: `Connect ${topic} to ${title}`,
-    visualStyle: index === 1 ? "example" : "diagram",
+  for (const source of sources) {
+    for (const phrase of extractConceptPhrases(source.excerpt)) {
+      const focus = focusForCandidate(phrase, source.excerpt, topic);
+      addCandidate(phrase, focus, conceptScore(phrase, source.relevance));
+    }
+  }
+
+  const ranked = Array.from(scored.entries())
+    .sort((a, b) => (b[1].score + b[1].count) - (a[1].score + a[1].count))
+  const selected: typeof ranked = [];
+  const groups = new Set<string>();
+  for (const item of ranked) {
+    const group = conceptGroup(item[0]);
+    if (groups.has(group)) continue;
+    groups.add(group);
+    selected.push(item);
+    if (selected.length === 4) break;
+  }
+  const top = selected.length >= 3 ? selected : ranked.slice(0, 4);
+
+  if (top.length >= 3) {
+    return top.map(([candidate, meta], index) => ({
+      topic: candidate,
+      focus: meta.focus || `Explain how ${candidate} relates to ${topic}`,
+      visualStyle: index === 1 ? "example" : "diagram",
+    }));
+  }
+
+  const fallback = ["Foundations", "Examples", "Patterns", "Misconceptions"].map((label, index) => ({
+    topic: `${titleCaseTopic(topic)} ${label}`,
+    focus: fallbackFocusFor(label, topic),
+    visualStyle: index === 1 ? "example" as const : "diagram" as const,
   }));
+  return [
+    ...top.map(([candidate, meta], index) => ({
+      topic: candidate,
+      focus: meta.focus || `Explain how ${candidate} relates to ${topic}`,
+      visualStyle: index === 1 ? "example" as const : "diagram" as const,
+    })),
+    ...fallback,
+  ].slice(0, 4);
 }
 
 function cleanSourceTitle(title: string): string {
   return title
     .replace(/\[[^\]]+\]/g, "")
-    .replace(/\b(tutorial|explained|introduction|complete guide|beginner'?s guide|examples?)\b/gi, "")
+    .replace(/\b(tutorial|explained|introduction|complete guide|beginner'?s guide|examples?|latest|video|videos?)\b/gi, "")
     .replace(/[|:–—-]\s*(youtube|khan academy|geeksforgeeks|coursera|medium).*$/i, "")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/\s+[|:–—-]\s*$/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .split(/\s+/)
@@ -221,7 +204,156 @@ function cleanSourceTitle(title: string): string {
     .join(" ");
 }
 
+function cleanCandidate(value: string, topic: string): string {
+  if (/area\s+under\s+(the\s+)?curve/i.test(value)) return "Area Under Curve";
+
+  const topicTokens = new Set(topic.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 2));
+  const words = value
+    .replace(/\b(youtube|video|tutorial|guide|explained|explanation|introduction|examples?|latest|complete|beginner'?s|review|basic|lesson|lessons)\b/gi, "")
+    .replace(/\b(how|what|why|when|where|who|your|the|and|for|with|from|into|about|made|easy|finally|understand|learn|learning|thanks|providing|explain|explains|explaining)\b/gi, "")
+    .replace(/[^a-zA-Z0-9+'\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/\s+/);
+  const filtered = words.length > 1
+    ? words.filter((word) => !topicTokens.has(word.toLowerCase()))
+    : words;
+
+  const clean = filtered
+    .slice(0, 4)
+    .map((word) => word.replace(/^[^a-zA-Z0-9+']+|[^a-zA-Z0-9+']+$/g, ""))
+    .filter(Boolean)
+    .map((word) => word.length <= 3 && word === word.toUpperCase()
+      ? word
+      : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+  return canonicalConcept(clean);
+}
+
+function extractConceptPhrases(text: string): string[] {
+  const words = text
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-zA-Z0-9+.'\s-]/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const contentWords = words.filter((word) => !STOP_WORDS.has(word.toLowerCase()) && word.length > 2);
+  const phrases = new Set<string>();
+
+  for (let i = 0; i < contentWords.length; i += 1) {
+    for (const size of [3, 2, 1]) {
+      const phrase = contentWords.slice(i, i + size);
+      if (phrase.length !== size) continue;
+      phrases.add(phrase.join(" "));
+    }
+  }
+
+  return Array.from(phrases);
+}
+
+function isUsefulCandidate(candidate: string, topic: string): boolean {
+  if (candidate.length < 4 || candidate.length > 64) return false;
+  if (sameTopic(candidate, topic)) return false;
+  const lower = candidate.toLowerCase();
+  if (lower.includes("'")) return false;
+  if (/^(how|what|why|latest|everything|learn|thanks|definition|meaning)\b/i.test(candidate)) return false;
+  if (["source", "excerpt", "minutes", "subscribers", "views", "explanation", "math is", "made easy", "ever hear"].some((word) => lower.includes(word))) return false;
+  if (GENERIC_WORDS.has(lower)) return false;
+  return candidate.split(/\s+/).some((word) => word.length > 4 || word === word.toUpperCase());
+}
+
+function canonicalConcept(candidate: string): string {
+  const lower = candidate.toLowerCase();
+  if (/area\s+under\s+(the\s+)?curve/.test(lower)) return "Area Under Curve";
+  if (lower === "limit") return "Limits";
+  if (lower === "derivative" || lower === "differential") return "Derivatives";
+  if (lower === "integral") return "Integrals";
+  if (lower === "integration") return "Integration";
+  return candidate;
+}
+
+function conceptGroup(candidate: string): string {
+  const lower = candidate.toLowerCase();
+  if (lower.includes("area") && lower.includes("curve")) return "area-under-curve";
+  if (lower.includes("limit")) return "limits";
+  if (lower.includes("derivative") || lower.includes("differential")) return "derivatives";
+  if (lower.includes("integral") || lower.includes("integration")) return "integrals";
+  return lower.split(/\s+/)[0] || lower;
+}
+
 function sameTopic(candidate: string, topic: string): boolean {
   const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "");
   return normalize(candidate) === normalize(topic);
 }
+
+function cleanExcerpt(excerpt: string): string {
+  const cleaned = excerpt
+    .replace(/\s+/g, " ")
+    .replace(/^#+\s*/, "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\[[^\]]+\]\([^)]+\)/g, "")
+    .trim();
+  const sentence = cleaned
+    .split(/[.!?]/)
+    .map((part) => part.trim().replace(/^#+\s*/, ""))
+    .find((part) => part.length > 35)
+    || cleaned.split(/[.!?]/)[0]?.trim().replace(/^#+\s*/, "")
+    || "";
+  return sentence.slice(0, 180);
+}
+
+function focusForCandidate(candidate: string, excerpt: string, topic: string): string {
+  const clean = cleanCandidate(candidate, topic);
+  const sentences = excerpt.replace(/\s+/g, " ").split(/[.!?]/).map((sentence) => sentence.trim()).filter(Boolean);
+  const token = clean.toLowerCase().split(/\s+/).find((part) => part.length > 3);
+  const match = token ? sentences.find((sentence) => sentence.toLowerCase().includes(token)) : undefined;
+  return cleanExcerpt(match || excerpt) || `Explain how ${clean} relates to ${topic}.`;
+}
+
+function conceptScore(phrase: string, relevance: number): number {
+  const words = phrase.split(/\s+/).filter(Boolean);
+  const lower = phrase.toLowerCase();
+  let score = relevance + words.length;
+  const hasHint = CONCEPT_HINTS.some((hint) => lower.includes(hint));
+  if (hasHint) score += 8;
+  if (lower.includes("area") && lower.includes("curve")) score += 12;
+  if (["derivative", "limit", "integration", "integral", "differential"].some((hint) => lower.includes(hint))) score += 5;
+  if (hasHint && words.length === 1) score += 4;
+  if (words.length === 1) score -= 1;
+  if (words.length > 3) score -= 2;
+  return score;
+}
+
+function titleCaseTopic(topic: string): string {
+  return topic
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function fallbackFocusFor(label: string, topic: string): string {
+  if (label === "Foundations") return `Define ${topic} and identify the central relationship.`;
+  if (label === "Examples") return `Apply ${topic} to one concrete case.`;
+  if (label === "Patterns") return `Find the repeated pattern that makes ${topic} easier to recognize.`;
+  return `Separate a useful mental model from a common misconception about ${topic}.`;
+}
+
+const STOP_WORDS = new Set([
+  "the", "and", "for", "with", "from", "into", "about", "this", "that", "what", "when", "where", "which",
+  "your", "you", "how", "why", "are", "was", "were", "will", "can", "has", "have", "had", "not", "but",
+  "tutorial", "guide", "video", "videos", "examples", "example", "learn", "learning", "latest", "complete",
+  "beginner", "introduction", "explain", "explains", "explained", "explanation", "understand", "made", "easy", "finally", "minutes", "thanks",
+  "definition", "meaning", "math", "fun", "source", "course", "review", "provide", "providing", "you'll", "youll", "ever", "hear",
+]);
+
+const GENERIC_WORDS = new Set([
+  "calculus", "math", "source", "course", "review", "definition", "meaning", "concept", "topic", "lesson",
+  "curve", "you'll", "youll",
+]);
+
+const CONCEPT_HINTS = [
+  "rule", "model", "application", "interview", "launch", "problem", "market", "founder",
+  "limit", "derivative", "integration", "integral", "differential", "probability", "vector", "network",
+  "simulation", "strategy", "character", "theme", "argument", "evidence", "area",
+];
