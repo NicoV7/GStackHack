@@ -6,8 +6,8 @@
 import { z } from "zod";
 
 const DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
-const DEFAULT_OLLAMA_MODEL = "qwen3:8b";
-const DEFAULT_LLM_TIMEOUT_MS = 180_000;
+const DEFAULT_OLLAMA_MODEL = "qwen3:1.7b";
+const DEFAULT_LLM_TIMEOUT_MS = 12_000;
 
 export async function llmChat(
   system: string,
@@ -25,8 +25,8 @@ export async function llmChat(
     }
   }
 
-  // Anthropic disabled — no credits remaining
-  // To re-enable: uncomment and add ANTHROPIC_API_KEY to env
+  // Anthropic disabled — no credits remaining for the hackathon demo.
+  // To re-enable later: uncomment and add ANTHROPIC_API_KEY to env.
   // if (anthropicKey()) {
   //   try {
   //     return await anthropicChat(system, userMessage);
@@ -88,8 +88,8 @@ async function ollamaChat(system: string, userMessage: string): Promise<string> 
         ],
         stream: false,
         options: {
-          temperature: 0.7,
-          num_predict: 512,
+          temperature: 0.4,
+          num_predict: 320,
         },
       }),
     });
