@@ -86,8 +86,10 @@ const GraphState = {
     const el = this.container;
 
     const onDown = (e) => {
-      // Don't start pan if click is on a node
+      // Don't start pan if click is on an interactive overlay element
       if (e.target.closest(".graph-node")) return;
+      if (e.target.closest(".graph-gallery-tab")) return;
+      if (e.target.closest(".graph-empty")) return;
       this._dragging = true;
       const pt = e.touches ? e.touches[0] : e;
       this._dragStartX = pt.clientX;
