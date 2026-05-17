@@ -3,20 +3,24 @@ import { SourceSchema } from "./schemas";
 import { CACHED_SOURCES } from "../demo-cache";
 
 type EmitFn = (event: SSEEvent) => void;
+const DEFAULT_BROWSER_SEARCH_TIMEOUT_MS = process.env.FAST_LOCAL_DEMO === "true" ? 1500 : 5000;
 
 export async function browserAgent(topic: string, emit: EmitFn): Promise<Source[]> {
   const query = `${topic} explanation tutorial examples`;
   emit({ type: "browser.searching", query });
 
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) {
+  if (process.env.FAST_LOCAL_DEMO === "true" || !apiKey) {
     // Fall back to demo cache when no API key
     return fallbackToCache(topic, emit);
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), browserSearchTimeoutMs());
   try {
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
+      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         api_key: apiKey,
@@ -57,12 +61,21 @@ export async function browserAgent(topic: string, emit: EmitFn): Promise<Source[
     return sources;
   } catch {
     return fallbackToCache(topic, emit);
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function browserSearchTimeoutMs(): number {
+  const value = Number(process.env.BROWSER_SEARCH_TIMEOUT_MS || DEFAULT_BROWSER_SEARCH_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_BROWSER_SEARCH_TIMEOUT_MS;
 }
 
 function fallbackToCache(topic: string, emit: EmitFn): Source[] {
   const normalized = topic.trim().toLowerCase();
-  const sources = CACHED_SOURCES[normalized] ?? CACHED_SOURCES.derivatives;
+  const sources = CACHED_SOURCES[normalized]
+    ?? (normalized.includes("integral") || normalized.includes("integration") ? CACHED_SOURCES.integration : undefined)
+    ?? CACHED_SOURCES.derivatives;
 
   for (const source of sources) {
     emit({ type: "browser.source_found", source });

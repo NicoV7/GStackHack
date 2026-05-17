@@ -232,5 +232,8 @@ describe("/api/learn", () => {
     expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "derivatives" }));
     expect(events).toContainEqual(expect.objectContaining({ type: "lesson.quiz_generated", nodeId: "area-under-curve" }));
     expect(events).toContainEqual(expect.objectContaining({ type: "pipeline.metric", name: "cards_generated_count", value: 4 }));
+    expect(events.findIndex((event) => event.type === "graph.node_added")).toBeLessThan(
+      events.findIndex((event) => event.type === "lesson.quiz_generated" && event.nodeId === "calculus-local-demo-all-lessons")
+    );
   });
 });

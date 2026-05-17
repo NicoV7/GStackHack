@@ -55,20 +55,6 @@ export async function POST(req: Request) {
     try {
       emit({ type: "browser.searching", query: `Starting pipeline for "${topic}"` });
 
-      const memoryStart = Date.now();
-      const memory = await withTimeout(
-        loadMemory(sid, topic, existingNodes, clientMemory),
-        GBRAIN_READ_TIMEOUT_MS,
-        { profile: DEFAULT_PROFILE, context: [] as string[], online: false }
-      );
-      metrics.gbrain_read_ms = Date.now() - memoryStart;
-      if (memory.online) {
-        emit({ type: "gbrain.context_loaded", sessionId: sid, count: memory.context.length });
-      } else {
-        emit({ type: "gbrain.offline", reason: "read_timeout_or_failed", diagnostic: getGbrainDiagnostic() });
-      }
-      emitMetric("gbrain_read_ms", metrics.gbrain_read_ms, emit);
-
       // Cache replay
       const cached = responseCache.get(cacheKey);
       if (cached) {
@@ -85,9 +71,27 @@ export async function POST(req: Request) {
         return;
       }
 
+      const memoryStart = Date.now();
+      const memoryPromise = withTimeout(
+        loadMemory(sid, topic, existingNodes, clientMemory),
+        GBRAIN_READ_TIMEOUT_MS,
+        { profile: DEFAULT_PROFILE, context: [] as string[], online: false }
+      ).catch(() => ({ profile: DEFAULT_PROFILE, context: [] as string[], online: false }))
+      .then((memory) => {
+        metrics.gbrain_read_ms = Date.now() - memoryStart;
+        if (memory.online) {
+          emit({ type: "gbrain.context_loaded", sessionId: sid, count: memory.context.length });
+        } else {
+          emit({ type: "gbrain.offline", reason: "read_timeout_or_failed", diagnostic: getGbrainDiagnostic() });
+        }
+        emitMetric("gbrain_read_ms", metrics.gbrain_read_ms, emit);
+        return memory;
+      });
+
       // ② Browser Agent (Tavily search)
       const searchStart = Date.now();
-      const sources = await browserAgent(topic, emit);
+      const sourcesPromise = browserAgent(topic, emit);
+      const sources = await sourcesPromise;
       metrics.search_ms = Date.now() - searchStart;
       emitMetric("search_ms", metrics.search_ms, emit);
 
@@ -102,22 +106,9 @@ export async function POST(req: Request) {
         return;
       }
 
-      // ③ Root lesson — generate for the search topic itself
-      const rootLessonStart = Date.now();
-      let rootLesson: Lesson | null = null;
-      try {
-        rootLesson = await lessonAgent(topic, sources, emit, topicId, {
-          focus: rootLessonFocus(topic, sources),
-          visualStyle: memory.profile.visualPreference === "graphs" ? "graph" : "diagram",
-          prerequisiteOf: null,
-        });
-      } catch {
-        // Root lesson failed — will still decompose into branches
-      }
-      metrics.root_lesson_ms = Date.now() - rootLessonStart;
-      emitMetric("root_lesson_ms", metrics.root_lesson_ms, emit);
+      const memory = await memoryPromise;
 
-      // ④ Decomposition Agent
+      // ③ Decomposition Agent. Do this before root lesson writing so a slow LLM cannot block graph start.
       const decompositionStart = Date.now();
       const { plans } = await decompositionAgent(topic, sources, memory.profile, emit);
       metrics.decomposition_ms = Date.now() - decompositionStart;
@@ -194,6 +185,21 @@ export async function POST(req: Request) {
         }
       }
       metrics.lesson_generation_ms = Date.now() - lessonStart;
+
+      // Generate the root lesson after the graph has started and branch lesson work has had a chance to emit.
+      const rootLessonStart = Date.now();
+      let rootLesson: Lesson | null = null;
+      try {
+        rootLesson = await lessonAgent(topic, sources, emit, topicId, {
+          focus: rootLessonFocus(topic, sources),
+          visualStyle: memory.profile.visualPreference === "graphs" ? "graph" : "diagram",
+          prerequisiteOf: null,
+        });
+      } catch {
+        // Root lesson failed — branch lessons can still complete the demo path.
+      }
+      metrics.root_lesson_ms = Date.now() - rootLessonStart;
+      emitMetric("root_lesson_ms", metrics.root_lesson_ms, emit);
 
       // Combine root + branch lessons
       const allLessons: Lesson[] = [];

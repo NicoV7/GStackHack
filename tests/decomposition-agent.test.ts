@@ -91,6 +91,31 @@ describe("Decomposition Agent", () => {
     expect(result.plans.some((plan) => /core idea|worked example|common mistake/i.test(plan.subTopic))).toBe(false);
   });
 
+  it("does not turn integration source verbs or channel titles into related topic nodes", async () => {
+    vi.stubEnv("ENABLE_LLM_DECOMPOSITION", "false");
+    const integrationSources: Source[] = [
+      {
+        title: "Integration - Basic Introduction, Practice Problems",
+        url: "https://example.com/integration",
+        excerpt: "Integration means finding antiderivatives or indefinite integrals using basic integration rules. Definite integrals calculate area under the curve and accumulated change.",
+        relevance: 0.95,
+      },
+      {
+        title: "Integral Calculus Examples - The Organic Chemistry Tutor",
+        url: "https://example.com/integral-calculus",
+        excerpt: "Integral calculus connects accumulation, antiderivatives, definite integrals, and the area under a curve.",
+        relevance: 0.86,
+      },
+    ];
+
+    const result = await decompositionAgent("integration", integrationSources, profile, emit);
+    const topics = result.plans.map((plan) => plan.subTopic);
+
+    expect(topics).not.toContain("Using");
+    expect(topics.join(" ")).not.toMatch(/organic chemistry|practice problems|basic introduction/i);
+    expect(topics.join(" ")).toMatch(/antiderivative|indefinite|definite|area/i);
+  });
+
   it("falls back to source-derived related topics when LLM returns too many plans", async () => {
     mockLlmChat.mockResolvedValue(JSON.stringify({
       plans: Array.from({ length: 5 }, (_, index) => ({

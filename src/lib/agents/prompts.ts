@@ -4,7 +4,8 @@ export const LESSON_SYSTEM_PROMPT = `You write short lessons. Output JSON only.
 
 Rules:
 - title must be the clean concept name only (e.g. "Chain Rule", "Derivatives", "Limits") — never include the parent topic, dashes, or qualifiers like "derivatives - Applications"
-- content is 2 short paragraphs (50-80 words max)
+- content is exactly 2 short teaching sentences (35-70 words total), not navigation copy
+- content must explain the named concept directly; do not say "Use this card", "next node", "strongest source", or "lesson"
 - One quiz question with 3 options
 - The quiz question must test the named concept directly, not generic understanding
 - Avoid generic quiz phrases like "key idea", "core principle", and "what should you notice"
@@ -69,7 +70,7 @@ Output valid JSON:
   "plans": [
     {
       "subTopic": "string - clean concept name only, e.g. 'Chain Rule' not 'Derivatives - Chain Rule'",
-      "focus": "string - what this micro-lesson teaches",
+      "focus": "string - 1-2 source-grounded teaching sentences that explain this subTopic directly",
       "visualStyle": "graph|diagram|animation|example",
       "prerequisiteOf": "string|null - which other sub-topic depends on this"
     }
@@ -79,6 +80,7 @@ Output valid JSON:
 Rules:
 - Order from foundational to advanced
 - subTopic must be a clean, standalone concept name — never prefix it with the parent topic or use dashes as separators
+- focus must read like lesson content, not a source title, navigation note, or search-result snippet
 - Each plan should be self-contained but reference prerequisites
 - Adapt complexity to the learner's level
 - Output ONLY the JSON object, no markdown fences, no explanation`;

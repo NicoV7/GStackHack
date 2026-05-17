@@ -94,20 +94,7 @@ function fallbackContent(topic: string, sources: Source[], plan?: LessonPlanCont
   const focus = plan?.focus ? cleanLessonFocus(plan.focus, topic) : "";
   const source = bestSourceForTopic(topic, sources);
   const sourceFrame = cleanSourceExcerpt(source?.excerpt || "");
-  const first = focus
-    ? `${topic}: ${sentenceCase(focus)}.`
-    : sourceFrame
-      ? `${topic}: ${sourceFrame}.`
-      : `${topic} needs one clear definition before the graph can branch.`;
-  const second = plan?.nextTopic
-    ? `Use this card to connect ${topic} to ${plan.nextTopic}; the next node should feel like a continuation, not a new subject.`
-    : focus
-      ? `Use the visual to connect that relationship before branching into related cards.`
-    : source?.title
-      ? `The strongest source signal came from "${cleanSourceTitle(source.title)}", so this card starts there.`
-      : `The useful move is to name the relationship, then test it with one quick example.`;
-
-  return [first, second].join("\n\n");
+  return synthesizeLessonContent(topic, focus || sourceFrame);
 }
 
 function fallbackQuiz(topic: string, normalized: string, plan?: LessonPlanContext) {
@@ -170,12 +157,110 @@ function cleanLessonFocus(value: string, topic: string): string {
   const cleaned = trimSentence(value)
     .replace(/\bstep\s+by\s+step\s+tutorial\s+on\s+/gi, "")
     .replace(/\bthis\s+(video|tutorial|lesson)\s+(shows|explains|covers)\s+/gi, "")
+    .replace(/\b(the\s+)?organic\s+chemistry\s+tutor\b/gi, "")
+    .replace(/\b(basic\s+)?introduction\b/gi, "")
+    .replace(/\bpractice\s+problems?\b/gi, "")
+    .replace(/\bexamples?\b/gi, "")
     .replace(/^because\s+it\s+is\s+like\s+/i, "")
     .replace(/^to\s+/i, "")
+    .replace(/[|:–—-]+/g, " ")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .sort((a, b) => focusPartScore(b, topic) - focusPartScore(a, topic))[0]
+    ?.replace(/\s+/g, " ")
+    .trim()
+    || "";
+  return cleanLeadingConnector(focusWindowForTopic(cleaned, topic) || cleaned);
+}
+
+function synthesizeLessonContent(topic: string, focus: string): string {
+  const first = synthesizeLessonSentence(topic, focus);
+  const second = synthesizeFollowupSentence(topic, focus);
+  return `${first} ${second}`;
+}
+
+function synthesizeLessonSentence(topic: string, focus: string): string {
+  const cleaned = cleanLeadingConnector(focus).replace(/[.!?]+$/g, "");
+  const topicLower = topic.toLowerCase();
+  const lower = `${topic} ${cleaned}`.toLowerCase();
+
+  if (/area\s+under\s+(the\s+)?curve/.test(lower)) {
+    return `${topic}: Connect the graph to an accumulated amount by measuring the area under the curve.`;
+  }
+  if (topicLower.includes("indefinite")) {
+    return `${topic}: Describe a family of antiderivatives before any start and end bounds are applied.`;
+  }
+  if (/antiderivative/.test(lower) && !/^integrals?$/.test(topicLower)) {
+    return `${topic}: Work backward from a rate of change to a function whose derivative matches it.`;
+  }
+  if (/definite integral/.test(lower) && topicLower.includes("definite")) {
+    return `${topic}: Use the bounds to turn many small changes into one accumulated total.`;
+  }
+  if (/^integrals?$/.test(topicLower)) {
+    return `${topic}: Represent accumulated change as one mathematical object you can evaluate or compare.`;
+  }
+  if (/integral calculus|integration|integral/.test(lower)) {
+    return `${topic}: Add small pieces together to measure a total change, not just a value at one point.`;
+  }
+  if (/derivative|differential|rate of change|slope/.test(lower)) {
+    return `${topic}: Measure how fast one quantity changes as another quantity moves.`;
+  }
+  if (/limit|approach/.test(lower)) {
+    return `${topic}: Track what a value approaches as the input gets close to a target.`;
+  }
+
+  return `${topic}: ${sentenceCase(cleaned)}.`;
+}
+
+function synthesizeFollowupSentence(topic: string, focus: string): string {
+  const topicLower = topic.toLowerCase();
+  const lower = `${topic} ${focus}`.toLowerCase();
+
+  if (/area\s+under\s+(the\s+)?curve/.test(lower)) {
+    return "A wider region means more accumulation, even if the curve never gives a single dramatic value.";
+  }
+  if (topicLower.includes("indefinite")) {
+    return "Because there are no bounds, the result keeps a constant term that represents many possible starting heights.";
+  }
+  if (/antiderivative/.test(lower) && !/^integrals?$/.test(topicLower)) {
+    return "You can check an antiderivative by differentiating it and seeing whether you recover the expression you started with.";
+  }
+  if (/definite integral/.test(lower) && topicLower.includes("definite")) {
+    return "The lower and upper bounds tell you where the accumulation starts and stops, so the answer is one contextual total.";
+  }
+  if (/^integrals?$/.test(topicLower)) {
+    return "That object can model area, distance, cost, or any total built from many tiny contributions.";
+  }
+  if (/integral calculus|integration|integral/.test(lower)) {
+    return "Think of each tiny slice as a small contribution; integration collects those slices into one result.";
+  }
+  if (/derivative|differential|rate of change|slope/.test(lower)) {
+    return "On a graph, that change shows up as the slope of the line that best matches the curve right there.";
+  }
+  if (/limit|approach/.test(lower)) {
+    return "The exact value at the target can be less important than the pattern the function follows nearby.";
+  }
+
+  return "The key is to name the relationship, then test it against one concrete example.";
+}
+
+function focusPartScore(part: string, topic: string): number {
+  const text = part.toLowerCase();
+  const topicTokens = topic.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3);
+  let score = topicTokens.filter((token) => text.includes(token)).length * 2;
+  if (/area|curve|accumulat|change|rate|slope|antiderivative|indefinite|definite|integral|derivative|limit/.test(text)) score += 4;
+  if (/organic chemistry|practice problems|examples?|introduction|tutorial|youtube|video/.test(text)) score -= 6;
+  return score;
+}
+
+function cleanLeadingConnector(value: string): string {
+  return value
     .replace(/\*\*/g, "")
+    .replace(/^because\s+it\s+is\s+like\s+/i, "")
+    .replace(/^to\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  return cleanLeadingConnector(focusWindowForTopic(cleaned, topic) || cleaned);
 }
 
 function focusWindowForTopic(focus: string, topic: string): string {
@@ -192,13 +277,6 @@ function focusWindowForTopic(focus: string, topic: string): string {
   const start = Math.max(0, index - 3);
   const end = Math.min(words.length, index + 9);
   return words.slice(start, end).join(" ").replace(/^[,;:\s]+|[,;:\s]+$/g, "");
-}
-
-function cleanLeadingConnector(value: string): string {
-  return value
-    .replace(/^because\s+it\s+is\s+like\s+/i, "")
-    .replace(/^to\s+/i, "")
-    .trim();
 }
 
 function bestSourceForTopic(topic: string, sources: Source[]): Source | undefined {

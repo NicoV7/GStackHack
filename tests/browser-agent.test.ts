@@ -28,4 +28,15 @@ describe("Browser Agent", () => {
     expect(sources.length).toBeGreaterThan(0);
     expect(sources[0].title).toContain("Khan Academy");
   });
+
+  it("uses integration cache immediately for local demo integral searches", async () => {
+    process.env.TAVILY_API_KEY = "unused-in-fast-demo";
+    process.env.FAST_LOCAL_DEMO = "true";
+
+    const sources = await browserAgent("Integrals", emit);
+
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources.map((source) => source.title).join(" ")).toMatch(/Integration|Integral/i);
+    delete process.env.FAST_LOCAL_DEMO;
+  });
 });

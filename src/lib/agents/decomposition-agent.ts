@@ -257,14 +257,24 @@ function isUsefulCandidate(candidate: string, topic: string): boolean {
   const lower = candidate.toLowerCase();
   if (lower.includes("'")) return false;
   if (/^(how|what|why|latest|everything|learn|thanks|definition|meaning)\b/i.test(candidate)) return false;
-  if (["source", "excerpt", "minutes", "subscribers", "views", "explanation", "math is", "made easy", "ever hear"].some((word) => lower.includes(word))) return false;
+  if (["source", "excerpt", "minutes", "subscribers", "views", "explanation", "math is", "made easy", "ever hear", "organic chemistry"].some((word) => lower.includes(word))) return false;
   if (GENERIC_WORDS.has(lower)) return false;
+  if (candidate.split(/\s+/).every((word) => GENERIC_WORDS.has(word.toLowerCase()))) return false;
+  if (/^(use|using|practice|problem|examples?|rules?|methods?|formulas?|primary|secondary)$/i.test(candidate)) return false;
+  if (/ing$/i.test(candidate) && candidate.split(/\s+/).length === 1 && !CONCEPT_HINTS.some((hint) => lower.includes(hint))) return false;
   return candidate.split(/\s+/).some((word) => word.length > 4 || word === word.toUpperCase());
 }
 
 function canonicalConcept(candidate: string): string {
   const lower = candidate.toLowerCase();
   if (/area\s+under\s+(the\s+)?curve/.test(lower)) return "Area Under Curve";
+  if (lower === "indefinite definite") return "Indefinite Integrals";
+  if (lower === "indefinite") return "Indefinite Integrals";
+  if (lower === "definite") return "Definite Integrals";
+  if (lower.includes("antiderivative") && lower.includes("indefinite")) return "Indefinite Integrals";
+  if (lower.includes("indefinite") && lower.includes("integral")) return "Indefinite Integrals";
+  if (lower.includes("definite") && lower.includes("integral")) return "Definite Integrals";
+  if (lower.includes("antiderivative")) return "Antiderivatives";
   if (lower === "limit") return "Limits";
   if (lower === "derivative" || lower === "differential") return "Derivatives";
   if (lower === "integral") return "Integrals";
@@ -277,6 +287,9 @@ function conceptGroup(candidate: string): string {
   if (lower.includes("area") && lower.includes("curve")) return "area-under-curve";
   if (lower.includes("limit")) return "limits";
   if (lower.includes("derivative") || lower.includes("differential")) return "derivatives";
+  if (lower.includes("antiderivative")) return "antiderivatives";
+  if (lower.includes("indefinite")) return "indefinite-integrals";
+  if (lower.includes("definite")) return "definite-integrals";
   if (lower.includes("integral") || lower.includes("integration")) return "integrals";
   return lower.split(/\s+/)[0] || lower;
 }
@@ -317,7 +330,7 @@ function conceptScore(phrase: string, relevance: number): number {
   const hasHint = CONCEPT_HINTS.some((hint) => lower.includes(hint));
   if (hasHint) score += 8;
   if (lower.includes("area") && lower.includes("curve")) score += 12;
-  if (["derivative", "limit", "integration", "integral", "differential"].some((hint) => lower.includes(hint))) score += 5;
+  if (["derivative", "limit", "integration", "integral", "differential", "antiderivative", "indefinite", "definite", "accumulation"].some((hint) => lower.includes(hint))) score += 5;
   if (hasHint && words.length === 1) score += 4;
   if (words.length === 1) score -= 1;
   if (words.length > 3) score -= 2;
@@ -345,15 +358,16 @@ const STOP_WORDS = new Set([
   "tutorial", "guide", "video", "videos", "examples", "example", "learn", "learning", "latest", "complete",
   "beginner", "introduction", "explain", "explains", "explained", "explanation", "understand", "made", "easy", "finally", "minutes", "thanks",
   "definition", "meaning", "math", "fun", "source", "course", "review", "provide", "providing", "you'll", "youll", "ever", "hear",
+  "use", "uses", "using", "practice", "problems", "problem", "organic", "chemistry", "method", "methods", "formula", "formulas", "primary", "secondary",
 ]);
 
 const GENERIC_WORDS = new Set([
   "calculus", "math", "source", "course", "review", "definition", "meaning", "concept", "topic", "lesson",
-  "curve", "you'll", "youll",
+  "curve", "you'll", "youll", "using", "use", "uses", "practice", "problem", "problems", "examples", "example", "rules", "rule", "methods", "method", "formulas", "formula", "primary", "secondary",
 ]);
 
 const CONCEPT_HINTS = [
   "rule", "model", "application", "interview", "launch", "problem", "market", "founder",
-  "limit", "derivative", "integration", "integral", "differential", "probability", "vector", "network",
+  "limit", "derivative", "integration", "integral", "differential", "antiderivative", "indefinite", "definite", "probability", "vector", "network",
   "simulation", "strategy", "character", "theme", "argument", "evidence", "area",
 ];

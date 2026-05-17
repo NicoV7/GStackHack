@@ -63,8 +63,8 @@ describe("lessonAgent", () => {
     });
 
     expect(lesson.title).toBe("Derivatives - Foundations");
-    expect(lesson.content).toMatch(/core concepts and definitions/i);
-    expect(lesson.content).toContain("Derivatives - Applications");
+    expect(lesson.content).toMatch(/changes|quantity|moves/i);
+    expect(lesson.content).not.toMatch(/Use this card|next node|Derivatives - Applications/i);
     expect(lesson.title).not.toBe("What is a Derivative?");
   });
 
@@ -87,6 +87,37 @@ describe("lessonAgent", () => {
     expect(lesson.content).not.toMatch(/Exponent Rule is about/i);
   });
 
+  it("fallback lessons synthesize a teaching card instead of echoing source titles", async () => {
+    mockCallAgentLLM.mockRejectedValue(new Error("offline"));
+
+    const lesson = await lessonAgent("Integration", sources, (event) => events.push(event), "integration", {
+      focus: "Integral Calculus Examples, Integration - Basic Introduction, Practice Problems The Organic Chemistry",
+      visualStyle: "diagram",
+      prerequisiteOf: "Antiderivatives",
+      nextTopic: "Antiderivatives",
+    });
+
+    expect(lesson.content).toContain("Integration:");
+    expect(lesson.content).toMatch(/small pieces|total change|accumulated/i);
+    expect(lesson.content).not.toMatch(/Use this card|next node|Organic Chemistry|Practice Problems|Basic Introduction|Examples/i);
+  });
+
+  it("fallback lessons use two teaching sentences instead of pathway navigation", async () => {
+    mockCallAgentLLM.mockRejectedValue(new Error("offline"));
+
+    const lesson = await lessonAgent("Definite Integrals", sources, (event) => events.push(event), "definite-integrals", {
+      focus: "Definite integrals use bounds to calculate accumulated change.",
+      visualStyle: "diagram",
+      prerequisiteOf: "Antiderivatives",
+      nextTopic: "Antiderivatives",
+    });
+
+    expect(lesson.content).toMatch(/^Definite Integrals:/);
+    expect(lesson.content).toMatch(/bounds/i);
+    expect(lesson.content).toMatch(/starts and stops|contextual total/i);
+    expect(lesson.content).not.toMatch(/Use this card|next node|connect Definite Integrals to Antiderivatives/i);
+  });
+
   it("fallback lessons extract topic-specific focus when branch sources share a sentence", async () => {
     mockCallAgentLLM.mockRejectedValue(new Error("offline"));
     const sharedFocus = "definition of a derivative as well as to perform basic integration techniques to calculate the area under the curve";
@@ -105,7 +136,7 @@ describe("lessonAgent", () => {
     });
 
     expect(integration.content).not.toBe(area.content);
-    expect(integration.content).toContain("basic integration techniques");
+    expect(integration.content).toMatch(/accumulated amount|area under the curve/i);
     expect(area.content).toContain("area under the curve");
   });
 

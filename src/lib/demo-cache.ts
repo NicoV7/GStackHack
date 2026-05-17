@@ -43,6 +43,26 @@ export const CACHED_SOURCES: Record<string, Source[]> = {
       relevance: 0.9,
     },
   ],
+  integration: [
+    {
+      title: "Integration - Math is Fun",
+      url: "https://www.mathsisfun.com/calculus/integration-introduction.html",
+      excerpt: "Integration adds many small pieces to find a total amount. It can measure accumulated change, area under a curve, distance from velocity, or any quantity built from tiny contributions.",
+      relevance: 0.96,
+    },
+    {
+      title: "Definite and Indefinite Integrals",
+      url: "https://openstax.org/books/calculus-volume-1/pages/5-introduction",
+      excerpt: "A definite integral uses lower and upper bounds to produce one accumulated total. An indefinite integral represents a family of antiderivatives before bounds are applied.",
+      relevance: 0.92,
+    },
+    {
+      title: "Antiderivatives and Accumulation",
+      url: "https://tutorial.math.lamar.edu/classes/calci/antiderivatives.aspx",
+      excerpt: "An antiderivative works backward from a rate of change to a function whose derivative matches the original expression. This idea connects derivatives to integrals.",
+      relevance: 0.88,
+    },
+  ],
   vectors: [
     {
       title: "Vectors - Khan Academy",
