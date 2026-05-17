@@ -1017,7 +1017,7 @@ renderGallery();
   if (!svg || !container) return;
 
   // Mini graph state for the hero preview
-  const RING_RADIUS = 115;
+  const RING_RADIUS = 220;
   let nodes = [];    // { id, label, status, x, y }
   let edges = [];    // { a, b, prereq }
   let focusIdx = 0; // index in nodes[] that sits at center
@@ -1083,7 +1083,9 @@ renderGallery();
     const w = container.offsetWidth;
     const h = container.offsetHeight;
     const cx = w / 2;
-    const cy = h / 2;
+    // Push the graph center toward the top so ring nodes spread to sides/corners
+    // and leave the vertical middle clear for the search bar
+    const cy = h * 0.35;
 
     // Position DOM nodes
     nodes.forEach((n, i) => {
