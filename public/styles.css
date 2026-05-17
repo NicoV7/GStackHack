@@ -1968,16 +1968,22 @@ body {
 }
 
 .reset-graph-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 50;
   background: rgba(255,80,80,0.15);
   color: #ff6b6b;
   border: 1px solid rgba(255,80,80,0.3);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 0.7rem;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  backdrop-filter: blur(8px);
 }
 .reset-graph-btn:hover {
-  background: rgba(255,80,80,0.3);
+  background: rgba(255,80,80,0.4);
   color: #fff;
 }
