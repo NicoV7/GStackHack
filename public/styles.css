@@ -1395,7 +1395,7 @@ body {
 .graph-gallery-tab {
   position: fixed;
   top: 70px;
-  right: 14px;
+  left: 14px;
   z-index: calc(var(--z-bar) - 1);
   width: 260px;
   display: flex;
