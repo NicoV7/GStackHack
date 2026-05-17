@@ -1393,13 +1393,27 @@ body {
 ═══════════════════════════════════════════════════════════════════ */
 
 .graph-gallery-tab {
-  position: absolute;
-  top: 14px;
+  position: fixed;
+  top: 70px;
   right: 14px;
-  z-index: calc(var(--z-graph) + 3);
+  z-index: calc(var(--z-bar) - 1);
   width: 260px;
   display: flex;
   flex-direction: column;
+
+  /* Hidden until app state */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+  transition:
+    opacity 300ms var(--ease-out) 200ms,
+    transform 360ms var(--spring) 200ms;
+}
+
+[data-app-state="app"] .graph-gallery-tab {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
 }
 
 /* Toggle pill button */
