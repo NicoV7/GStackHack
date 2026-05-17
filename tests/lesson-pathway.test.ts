@@ -15,6 +15,8 @@ describe("lesson pathway builder", () => {
     expect(pathway.nodeIds).toEqual(["limits", "power-rule", "chain-rule"]);
     expect(pathway.edges).toEqual([
       { id: "e-derivatives-limits", source: "derivatives", target: "limits", type: "branch" },
+      { id: "e-derivatives-power-rule", source: "derivatives", target: "power-rule", type: "branch" },
+      { id: "e-derivatives-chain-rule", source: "derivatives", target: "chain-rule", type: "branch" },
       { id: "e-limits-power-rule", source: "limits", target: "power-rule", type: "prerequisite" },
       { id: "e-power-rule-chain-rule", source: "power-rule", target: "chain-rule", type: "prerequisite" },
     ]);

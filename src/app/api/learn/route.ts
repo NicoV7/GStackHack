@@ -3,7 +3,6 @@ import { browserAgent } from "@/lib/agents/browser-agent";
 import { lessonAgent } from "@/lib/agents/lesson-agent";
 import { graphAgent } from "@/lib/agents/graph-agent";
 import { decompositionAgent } from "@/lib/agents/decomposition-agent";
-import { visualizationAgent } from "@/lib/agents/visualization-agent";
 import { buildLessonPathway, buildRelatedNodeEdges, slugTopic, type ExistingLessonNode } from "@/lib/lesson-pathway";
 import { getGbrainDiagnostic, getProfile, putConceptMemory, putLesson, putResearch, queryContext, safeSessionId, touchSession } from "@/lib/gbrain";
 import type { Lesson, GraphNode, GraphEdge, LearnerProfile, Source, SSEEvent } from "@/lib/types";
@@ -96,7 +95,6 @@ export async function POST(req: Request) {
         const lesson = await lessonAgent(topic, sources, emit, nodeId);
         metrics.lesson_generation_ms = Date.now() - lessonStart;
         emitMetric("lesson_generation_ms", metrics.lesson_generation_ms, emit);
-        try { await visualizationAgent(lesson, emit); } catch {}
         queueMemoryWrite({ sid, topic, topicId, sources, lessons: [lesson], metrics, emit });
         emit({ type: "pipeline.complete", totalMs: Date.now() - start });
         return;
@@ -132,13 +130,14 @@ export async function POST(req: Request) {
       for (const edge of pathway.edges) {
         emit({ type: "graph.edge_added", edge });
       }
-      for (const edge of buildRelatedNodeEdges({
+      const relatedEdges = buildRelatedNodeEdges({
         topicId,
         topic,
         pathwayNodes: pathway.nodes,
         existingNodes,
         gbrainContext: memory.context,
-      })) {
+      });
+      for (const edge of relatedEdges) {
         emit({ type: "graph.edge_added", edge, source: memory.online ? "gbrain.related" : "related" });
       }
 
@@ -197,11 +196,6 @@ export async function POST(req: Request) {
         throw new Error("All lesson agents failed");
       }
 
-      // ⑤b Visualization Agent — generate visuals for each lesson
-      for (const lesson of allLessons) {
-        try { await visualizationAgent(lesson, emit); } catch {}
-      }
-
       // ⑥ Graph Agent is optional; heuristic graph/pathway is the default demo path.
       const existingNodeIds = [topicId, ...planNodeIds];
       let newNodes: GraphNode[] = [];
@@ -221,7 +215,11 @@ export async function POST(req: Request) {
       }
 
       // Cache first lesson for quick replay
-      responseCache.set(cacheKey, { lesson: allLessons[0], nodes: newNodes, edges: newEdges });
+      responseCache.set(cacheKey, {
+        lesson: allLessons[0],
+        nodes: [...pathway.nodes, ...newNodes],
+        edges: [...pathway.edges, ...relatedEdges, ...newEdges],
+      });
       queueMemoryWrite({ sid, topic, topicId, sources, lessons: allLessons, metrics, emit });
 
       // ⑧ Pipeline complete

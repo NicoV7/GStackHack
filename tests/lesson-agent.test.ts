@@ -68,6 +68,21 @@ describe("lessonAgent", () => {
     expect(lesson.title).not.toBe("What is a Derivative?");
   });
 
+  it("fallback quizzes are topic-specific instead of repeating a generic template", async () => {
+    mockCallAgentLLM.mockRejectedValue(new Error("offline"));
+
+    const chainRule = await lessonAgent("Chain Rule", sources, (event) => events.push(event), "chain-rule");
+    const productRule = await lessonAgent("Product Rule", sources, (event) => events.push(event), "product-rule");
+
+    expect(chainRule.quiz[0].text).toContain("sin(x^2)");
+    expect(productRule.quiz[0].text).toContain("f(x)g(x)");
+    expect(chainRule.quiz[0].text).not.toBe(productRule.quiz[0].text);
+    expect(chainRule.quiz[0].text).not.toMatch(/key idea|core principle/i);
+    expect(chainRule.quiz[0].options.map((option) => option.label)).not.toContain("Understanding the core principle");
+    expect(chainRule.quiz[0].prerequisiteTopic).toBe("Function Composition");
+    expect(productRule.quiz[0].prerequisiteTopic).toBe("Derivatives");
+  });
+
   it("falls back to cache when LLM content exceeds schema max length", async () => {
     // Simulate callAgentLLM throwing (as it would when Zod .max(600) rejects)
     mockCallAgentLLM.mockRejectedValue(new Error("String must contain at most 600 character(s)"));

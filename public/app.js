@@ -870,14 +870,15 @@ async function startPipeline(topic) {
   currentTopic = topic;
   rememberSearch(topic);
   clearAgentFeed();
-  GraphState.reset();
   openBentoDrawer();
   if (graphEmpty) graphEmpty.classList.add("hidden");
   if (pipelineStatus) pipelineStatus.textContent = "Running...";
 
-  // Add root node
+  // Add root node (only if it doesn't already exist)
   const topicId = topic.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  GraphState.addRootNode(topicId, topic, null);
+  if (!GraphState.nodes.has(topicId)) {
+    GraphState.addRootNode(topicId, topic, null);
+  }
   updateStats();
   renderGallery();
   saveGraphSnapshot();
@@ -889,7 +890,7 @@ async function startPipeline(topic) {
     const res = await fetch("/api/learn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, sessionId: learnGraphSessionId, clientMemory: buildClientMemoryPayload() }),
+      body: JSON.stringify({ topic, sessionId: learnGraphSessionId, existingNodes: getExistingLessonNodes(), clientMemory: buildClientMemoryPayload() }),
     });
 
     const reader = res.body.getReader();
