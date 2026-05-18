@@ -25,6 +25,7 @@ Copy `.env.example` to `.env.local` and fill in:
 - `LLM_TIMEOUT_MS` — provider timeout before fallback (default: 25000)
 - `ANTHROPIC_API_KEY` — optional paid fallback if Ollama/Azure is unavailable
 - `GBRAIN_URL` — Azure GBrain MCP server origin (`http://learngraph-gbrain.westus2.azurecontainer.io:4100` in production); the app calls `${GBRAIN_URL}/mcp`
+- `GBRAIN_SHARED_SECRET` — required bearer token when `GBRAIN_URL` is configured in production
 
 ## Prerequisites
 

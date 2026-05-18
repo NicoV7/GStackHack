@@ -36,6 +36,12 @@ function gbrainSharedSecret(): string | undefined {
   return process.env.GBRAIN_SHARED_SECRET?.trim() || undefined;
 }
 
+function requireGbrainSharedSecret(): void {
+  if (gbrainUrl() && process.env.NODE_ENV === "production" && !gbrainSharedSecret()) {
+    throw new Error("GBRAIN_SHARED_SECRET is required when GBRAIN_URL is configured in production");
+  }
+}
+
 function allowLocalCliFallback(): boolean {
   return !gbrainUrl() && process.env.NODE_ENV !== "production";
 }
@@ -89,6 +95,7 @@ export function getGbrainDiagnostic(): { configured: boolean; mode: "mcp" | "cli
 async function callMcp(name: string, args: Record<string, unknown>) {
   const url = gbrainUrl();
   if (!url) throw new Error("GBRAIN_URL is not configured");
+  requireGbrainSharedSecret();
   const token = gbrainSharedSecret();
   const res = await fetch(new URL("/mcp", url), {
     method: "POST",

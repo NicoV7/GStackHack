@@ -58,6 +58,26 @@ if [ -n "$GBRAIN_PERSIST_DIR" ] && [ -d "$GBRAIN_PERSIST_DIR" ]; then
 fi
 
 PORT="${PORT:-4100}"
+GBRAIN_BACKEND_PORT="${GBRAIN_BACKEND_PORT:-4101}"
 
-echo "Starting GBrain MCP server on port ${PORT}..."
-exec bun "$GBRAIN_CLI" serve --http --port "$PORT"
+if [ "${GBRAIN_ALLOW_UNAUTHENTICATED:-}" = "true" ]; then
+  echo "WARNING: Starting unauthenticated GBrain MCP server on port ${PORT}."
+  exec bun "$GBRAIN_CLI" serve --http --port "$PORT"
+fi
+
+if [ -z "${GBRAIN_SHARED_SECRET:-}" ]; then
+  echo "GBRAIN_SHARED_SECRET is required. Set GBRAIN_ALLOW_UNAUTHENTICATED=true only for isolated local development." >&2
+  exit 1
+fi
+
+echo "Starting GBrain MCP backend on internal port ${GBRAIN_BACKEND_PORT}..."
+bun "$GBRAIN_CLI" serve --http --port "$GBRAIN_BACKEND_PORT" &
+GBRAIN_PID="$!"
+
+cleanup() {
+  kill "$GBRAIN_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+echo "Starting authenticated GBrain MCP proxy on port ${PORT}..."
+exec node /usr/local/bin/gbrain-auth-proxy

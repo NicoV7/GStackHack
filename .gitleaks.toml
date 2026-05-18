@@ -1,0 +1,19 @@
+title = "LearnGraph gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented placeholder secrets and local-only examples"
+paths = [
+  '''^\.env\.example$''',
+  '''^CLAUDE\.md$''',
+  '''^gbrain-server/README\.md$'''
+]
+regexes = [
+  '''your-key-here''',
+  '''your-gbrain-bearer-token''',
+  '''generate-a-long-random-local-token''',
+  '''\$GBRAIN_SHARED_SECRET''',
+  '''\$STORAGE_KEY'''
+]

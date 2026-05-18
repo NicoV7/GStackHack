@@ -6,10 +6,11 @@ Runtime behavior:
 
 - The image clones the official `garrytan/gbrain` repo and runs `src/cli.ts` with Bun.
 - It intentionally does not install the npm package named `gbrain`; that package is unrelated to the official project.
-- The container starts `gbrain serve --http`.
+- The container starts `gbrain serve --http` behind a small bearer-auth proxy.
 - It respects Azure's `PORT` env var, falling back to `4100` locally.
 - PGLite runs on local container disk. If `GBRAIN_PERSIST_DIR` is set, the container restores from that directory at boot and syncs `$HOME/.gbrain` back periodically. Do not mount Azure Files directly at `/root/.gbrain`; PGLite can hang on the SMB filesystem.
 - The web app must set `GBRAIN_URL=http://learngraph-gbrain.westus2.azurecontainer.io:4100`.
+- The web app and GBrain container must share the same `GBRAIN_SHARED_SECRET`; requests without `Authorization: Bearer <secret>` are rejected.
 - The web app calls the MCP endpoint at `${GBRAIN_URL}/mcp`.
 
 Azure build/deploy shape:
@@ -25,6 +26,7 @@ az container create \
   --ip-address Public \
   --os-type Linux \
   --restart-policy Always \
+  --secure-environment-variables GBRAIN_SHARED_SECRET="$GBRAIN_SHARED_SECRET" \
   --environment-variables PORT=4100 GBRAIN_PERSIST_DIR=/mnt/gbrain-persist \
   --azure-file-volume-account-name learngraphbrainstore \
   --azure-file-volume-account-key "$STORAGE_KEY" \
@@ -42,4 +44,11 @@ Then set:
 
 ```bash
 GBRAIN_URL=http://localhost:4100
+GBRAIN_SHARED_SECRET=generate-a-long-random-local-token
+```
+
+For isolated local experiments only, you can bypass the proxy with:
+
+```bash
+GBRAIN_ALLOW_UNAUTHENTICATED=true ./start.sh
 ```

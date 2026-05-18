@@ -1,5 +1,9 @@
 /* LearnGraph — Main Application Logic */
 
+if (window.mermaid) {
+  mermaid.initialize({ startOnLoad: false, theme: "dark" });
+}
+
 // --- App State Machine ---
 const appEl = document.querySelector(".app");
 
@@ -470,12 +474,21 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function safeHttpUrl(value) {
+  try {
+    const url = new URL(String(value || ""), window.location.href);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 // --- Lesson Panel ---
 function renderLessonPlaceholder(node) {
   if (!lessonPanel) return;
   lessonPanel.innerHTML = `
     <p class="lesson-kicker">Graph node</p>
-    <h2 class="lesson-title">${node.topic}</h2>
+    <h2 class="lesson-title">${escapeHtml(node.topic)}</h2>
     <div class="lesson-content">
       This node is in the map, but its lesson has not streamed in yet. The lesson agent will attach content, sources, and a quiz when generation completes.
     </div>
@@ -490,17 +503,22 @@ function renderLessonPanel(lesson, topic) {
     ? `<div class="lesson-sources">
         <div class="lesson-sources-inner">
           <h4>Sources</h4>
-          ${lesson.sources.map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>`).join("")}
+          ${lesson.sources.map((s) => {
+            const href = safeHttpUrl(s.url);
+            return href
+              ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title)}</a>`
+              : `<span>${escapeHtml(s.title)}</span>`;
+          }).join("")}
         </div>
       </div>`
     : "";
 
   const quizHtml = lesson.quiz && lesson.quiz.length > 0
     ? `<div class="quiz-section">
-        <p class="quiz-question">${lesson.quiz[0].text}</p>
+        <p class="quiz-question">${escapeHtml(lesson.quiz[0].text)}</p>
         <div class="quiz-options">
           ${lesson.quiz[0].options.map((opt, i) =>
-            `<button class="quiz-option" data-index="${i}" data-correct="${opt.correct}" data-qid="${lesson.quiz[0].id}">${opt.label}</button>`
+            `<button class="quiz-option" data-index="${i}" data-correct="${Boolean(opt.correct)}" data-qid="${escapeHtml(lesson.quiz[0].id)}">${escapeHtml(opt.label)}</button>`
           ).join("")}
         </div>
         <p class="quiz-feedback" id="quizFeedback"></p>
@@ -508,16 +526,19 @@ function renderLessonPanel(lesson, topic) {
     : "";
 
   lessonPanel.innerHTML = `
-    <h2 class="lesson-title">${lesson.title || topic}</h2>
-    <div class="lesson-content">${lesson.content || ""}</div>
+    <h2 class="lesson-title">${escapeHtml(lesson.title || topic)}</h2>
+    <div class="lesson-content">${escapeHtml(lesson.content || "")}</div>
     ${sourcesHtml}
     ${quizHtml}
-    <button class="deep-dive-btn" onclick="loadDeepDive('${(lesson.title || topic).replace(/'/g, "\\'")}')">Learn more \u2192</button>
+    <button class="deep-dive-btn" type="button">Learn more \u2192</button>
   `;
 
   // Wire quiz buttons
   lessonPanel.querySelectorAll(".quiz-option").forEach((btn) => {
     btn.addEventListener("click", () => handleQuizAnswer(btn, lesson));
+  });
+  lessonPanel.querySelector(".deep-dive-btn")?.addEventListener("click", () => {
+    loadDeepDive(lesson.title || topic);
   });
 }
 
@@ -546,27 +567,29 @@ function renderDeepDive(data) {
   if (!lessonPanel) return;
 
   const sectionsHtml = data.sections.map(section => {
+    const content = escapeHtml(section.content);
     switch (section.type) {
       case 'mermaid':
-        return `<div class="deep-dive-section mermaid-section"><pre class="mermaid">${section.content}</pre></div>`;
+        return `<div class="deep-dive-section mermaid-section"><pre class="mermaid">${content}</pre></div>`;
       case 'explanation':
-        return `<div class="deep-dive-section explanation-section"><p>${section.content.replace(/\n\n/g, '</p><p>')}</p></div>`;
+        return `<div class="deep-dive-section explanation-section"><p>${content.replace(/\n\n/g, '</p><p>')}</p></div>`;
       case 'workedExample':
-        return `<div class="deep-dive-section example-section"><h3>Worked Example</h3><pre class="worked-example">${section.content}</pre></div>`;
+        return `<div class="deep-dive-section example-section"><h3>Worked Example</h3><pre class="worked-example">${content}</pre></div>`;
       case 'comparisonTable':
         return `<div class="deep-dive-section table-section">${markdownTableToHtml(section.content)}</div>`;
       case 'quiz':
         return `<div class="deep-dive-section quiz-section"><p><em>Quiz available in card view</em></p></div>`;
       default:
-        return `<div class="deep-dive-section"><p>${section.content}</p></div>`;
+        return `<div class="deep-dive-section"><p>${content}</p></div>`;
     }
   }).join('');
 
   lessonPanel.innerHTML = `
-    <h2 class="lesson-title">${data.title}</h2>
+    <h2 class="lesson-title">${escapeHtml(data.title)}</h2>
     <div class="deep-dive-content">${sectionsHtml}</div>
-    <button class="deep-dive-btn" onclick="backToCard()">← Back to card</button>
+    <button class="deep-dive-btn" type="button">← Back to card</button>
   `;
+  lessonPanel.querySelector(".deep-dive-btn")?.addEventListener("click", backToCard);
 
   // Render Mermaid diagrams
   mermaid.run({ nodes: lessonPanel.querySelectorAll('.mermaid') });
@@ -580,16 +603,16 @@ function backToCard() {
 
 function markdownTableToHtml(md) {
   const lines = md.trim().split('\n').filter(l => !l.match(/^\|[-\s|]+\|$/));
-  if (lines.length === 0) return '<p>' + md + '</p>';
+  if (lines.length === 0) return '<p>' + escapeHtml(md) + '</p>';
 
   const rows = lines.map(line =>
     line.split('|').filter(cell => cell.trim()).map(cell => cell.trim())
   );
 
   let html = '<table class="comparison-table">';
-  html += '<thead><tr>' + rows[0].map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+  html += '<thead><tr>' + rows[0].map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr></thead>';
   html += '<tbody>' + rows.slice(1).map(row =>
-    '<tr>' + row.map(c => `<td>${c}</td>`).join('') + '</tr>'
+    '<tr>' + row.map(c => `<td>${escapeHtml(c)}</td>`).join('') + '</tr>'
   ).join('') + '</tbody></table>';
 
   return html;
@@ -1013,9 +1036,9 @@ function renderGallery() {
       return `
         <button class="gallery-item" type="button" data-node-id="${node.id}" role="listitem">
           <div class="gallery-item-inner">
-            <span class="gallery-thumb">${node.topic.charAt(0).toUpperCase()}</span>
+            <span class="gallery-thumb">${escapeHtml(node.topic.charAt(0).toUpperCase())}</span>
             <span class="gallery-item-text">
-              <strong>${node.topic}</strong>
+              <strong>${escapeHtml(node.topic)}</strong>
               <small>${node.lesson ? "Lesson ready" : "Generating..."}</small>
             </span>
             <span class="gallery-item-status ${statusClass}"></span>

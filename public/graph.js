@@ -323,7 +323,7 @@ const GraphState = {
 
         const label = node.topic.length > 18 ? node.topic.slice(0, 16) + "…" : node.topic;
         el.className = ["graph-node", node.status, isActive ? "active" : "", isFocus ? "focus-center" : ""].filter(Boolean).join(" ");
-        el.innerHTML = `<div class="graph-node-shell"><div class="graph-node-inner"><span class="node-label">${label}</span></div></div>`;
+        el.innerHTML = `<div class="graph-node-shell"><div class="graph-node-inner"><span class="node-label">${escapeGraphHtml(label)}</span></div></div>`;
         el.style.left = `${cx + pos.x}px`;
         el.style.top  = `${cy + pos.y}px`;
 
@@ -358,3 +358,12 @@ const GraphState = {
     }).join("");
   },
 };
+
+function escapeGraphHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}

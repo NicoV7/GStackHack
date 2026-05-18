@@ -33,10 +33,13 @@ describe("deepDiveAgent", () => {
     expect(result.sections[1].type).toBe("mermaid");
   });
 
-  it("throws when LLM fails (caller handles error)", async () => {
+  it("falls back when LLM fails", async () => {
     mockCallAgentLLM.mockRejectedValue(new Error("LLM timeout"));
 
-    await expect(deepDiveAgent("Limits", [])).rejects.toThrow("LLM timeout");
+    const result = await deepDiveAgent("Limits", []);
+
+    expect(result.title).toBe("Limits Deep Dive");
+    expect(result.sections.some((section) => section.type === "mermaid")).toBe(true);
   });
 
   it("passes topic and sources to callAgentLLM", async () => {
